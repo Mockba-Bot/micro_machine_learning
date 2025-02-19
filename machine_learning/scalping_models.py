@@ -16,9 +16,13 @@ from datetime import timedelta
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database import getHistorical
 from database import operations
-from bucket import download_model, upload_model
 import warnings
 warnings.filterwarnings("ignore")
+
+# Add the directory containing your modules to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from machine_learning.bucket import download_model, upload_model
+
 # Load environment variables from the .env file
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
 load_dotenv(dotenv_path=dotenv_path)
@@ -125,13 +129,13 @@ def train_profit_target_model(df, model_path, profit_target_from, profit_target_
         n_estimators=100,  # Increased for better accuracy within available resources
         max_depth=cpu_count,       # Balanced depth for efficiency
         random_state=42,
-        n_jobs=6           # Use 6 cores for parallel processing
+        n_jobs=cpu_count           # Use 6 cores for parallel processing
     )
 
     model.fit(X_train, y_train)
 
     # Save the trained model to disk
-    joblib.dump(best_model, model_path) 
+    joblib.dump(model, model_path) 
 
 # Update the existing model with new data if exists
 def update_profit_target_model(existing_model, df, profit_target_from, profit_target_to):
@@ -394,7 +398,6 @@ def train_scalping_models(token, pair, timeframe, stop_loss_percentage, profit_t
     , profit_target_to, partial_exit_threshold_from, partial_exit_threshold_to
     , exit_remaining_percentage_from, exit_remaining_percentage_to, partial_exit_amount
 ):
-    print("Training scalping models...")
     MODEL_KEY_TRAINED = f'Mockba/scalping_models/{pair}_{timeframe}_trading_model.joblib'
     local_model_path_training = f'temp/{pair}_{timeframe}_trading_model.joblib'
 
@@ -413,14 +416,10 @@ def train_scalping_models(token, pair, timeframe, stop_loss_percentage, profit_t
     values = f'2024-11-01|{current_date}'
     # Get the model path to verify if the model already exists
     # Fetch historical data and add technical indicators
-    print("Fetch Historical Data")
     getHistorical.get_all_binance(pair, timeframe, token, save=True)
     # Get the historical data for the pair and timeframe
-    print("Get Historical Data")
     data = get_historical_data(pair, timeframe, values)
-    print("Add Indicators")
     data = calculate_indicators(data)
-    print("Train Model")
     # Check if the model exists in DigitalOcean Spaces
     if download_model(BUCKET_NAME, MODEL_KEY_TRAINED, local_model_path_training):
         # Load the existing model
@@ -483,46 +482,40 @@ def train_scalping_models(token, pair, timeframe, stop_loss_percentage, profit_t
     # Delete the local file after uploading
     if os.path.exists(local_model_path_training):
         os.remove(local_model_path_training)
-        print(f"Deleted local file: {local_model_path_training}")
     else:
         print(f"Local file {local_model_path_training} does not exist.")
 
     # Delete the local file after uploading  
     if os.path.exists(local_model_path_exit_remaining):
         os.remove(local_model_path_exit_remaining)
-        print(f"Deleted local file: {local_model_path_exit_remaining}")
     else:  
         print(f"Local file {local_model_path_exit_remaining} does not exist.")
 
     # Delete the local file after uploading
     if os.path.exists(local_model_path_parcial_exit):
         os.remove(local_model_path_parcial_exit)
-        print(f"Deleted local file: {local_model_path_parcial_exit}")
     else:
         print(f"Local file {local_model_path_parcial_exit} does not exist.")
 
     # Delete the local file after uploading
     if os.path.exists(local_model_path_profit_target):
         os.remove(local_model_path_profit_target)
-        print(f"Deleted local file: {local_model_path_profit_target}")
     else:
-        print(f"Local file {local_model_path_profit_target} does not exist.")        
-
-    print("Model training complete.")                  
+        print(f"Local file {local_model_path_profit_target} does not exist.")                        
 
 
-if __name__ == "__main__":
-    stop_loss_percentage = 0.5 # 50% stop loss
-    profit_target_from = 0.1 # 1% profit target
-    profit_target_to = 0.3 # 3% profit target
-    partial_exit_threshold_from = 25.0 # 25% partial exit threshold
-    partial_exit_threshold_to = 30.0 # 30% partial exit threshold
-    exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
-    exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
-    partial_exit_amount = 0.15 # 15% partial exit amount
+# if __name__ == "__main__":
+#     stop_loss_percentage = 0.5 # 50% stop loss
+#     profit_target_from = 0.1 # 1% profit target
+#     profit_target_to = 0.3 # 3% profit target
+#     partial_exit_threshold_from = 25.0 # 25% partial exit threshold
+#     partial_exit_threshold_to = 30.0 # 30% partial exit threshold
+#     exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
+#     exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
+#     partial_exit_amount = 0.15 # 15% partial exit amount
 
-    train_scalping_models('000000', 'APTUSDT', '5m'
-    , stop_loss_percentage, profit_target_from, profit_target_to
-    , partial_exit_threshold_from, partial_exit_threshold_to
-    , exit_remaining_percentage_from
-    , exit_remaining_percentage_to, partial_exit_amount)
+#     train_scalping_models('000000', 'APTUSDT', '5m'
+#     , stop_loss_percentage, profit_target_from, profit_target_to
+#     , partial_exit_threshold_from, partial_exit_threshold_to
+#     , exit_remaining_percentage_from
+#     , exit_remaining_percentage_to, partial_exit_amount)
