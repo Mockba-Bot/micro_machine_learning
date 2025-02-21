@@ -26,7 +26,7 @@ def remove_null_from_sql_table(table_name):
         # Delete rows with null timestamp from the specified table
         sql = f"""
         DELETE FROM public."{table_name}"
-        WHERE timestamp is null;
+        WHERE start_timestamp is null or end_timestamp is null;
         """
         cursor.execute(sql)
         conn.commit()
