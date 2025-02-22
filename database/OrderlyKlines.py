@@ -92,7 +92,7 @@ def fetch_historical_orderly(symbol, interval="1h"):
 
     data = response.json().get("data", {})
     if not data or "rows" not in data:
-        print("✅ No new data available.")
+        # print("✅ No new data available.")
         return
 
     # ✅ Extract the "rows" array from the response
@@ -152,9 +152,9 @@ def fetch_historical_orderly(symbol, interval="1h"):
     # ✅ Step 6: Bulk insert only new rows
     if not df_filtered.empty:
         df_filtered.to_sql(tablename, operations.db_con_historical, if_exists="append", index=True, method="multi")
-        print(f"✅ Inserted {len(df_filtered)} new rows into {tablename}.")
-    else:
-        print(f"✅ No new data to insert for {symbol} and {interval}, all timestamps already exist.")
+        # print(f"✅ Inserted {len(df_filtered)} new rows into {tablename}.")
+    # else:
+    #     print(f"✅ No new data to insert for {symbol} and {interval}, all timestamps already exist.")
 
     # ✅ Step 7: Remove NULL values from SQL table (optional cleanup step)
     operations.remove_null_from_sql_table(tablename)
@@ -202,7 +202,7 @@ def fetch_data():
     start_time = time.time()  # Track start time
 
     for timeframe in timeframes:
-        print(f"🔄 Fetching historical data for all symbols - {timeframe}")
+        # print(f"🔄 Fetching historical data for all symbols - {timeframe}")
         fetch_data_for_timeframe(timeframe)
         time.sleep(1)  # Add a delay to avoid rate limits
 
@@ -211,7 +211,7 @@ def fetch_data():
     print(f"✅ Data fetching complete. Total time taken: {elapsed_time:.2f} seconds.")   
 
 # Run the function immediately when the script starts
-print("🚀 Running initial fetch...")
+# print("🚀 Running initial fetch...")
 fetch_data()
 
 # Schedule the function to run every 30 minutes
