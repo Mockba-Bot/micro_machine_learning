@@ -163,7 +163,7 @@ timeframes = ['1h', '4h', '1d', '5m']
 
 # Process all intervals of 1h first, then 4h, and so on
 def fetch_data_for_timeframe(timeframe):
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [executor.submit(fetch_historical_orderly, symbol, timeframe) for symbol in orderly_symbols]
         for future in as_completed(futures):
             try:
