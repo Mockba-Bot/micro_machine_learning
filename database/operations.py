@@ -11,22 +11,24 @@ load_dotenv(dotenv_path=dotenv_path)
 # access the environment variables
 host = os.getenv("HOST")
 database = os.getenv("DATABASE")
+database_historical = os.getenv("DATABASE_HISTORICAL")
 user = os.getenv("USR")
 password = os.getenv("PASSWD")
 
  
 db_con = create_engine(f"postgresql://{user}:{password}@{host}:5432/{database}")  
+db_con_historical = create_engine(f"postgresql://{user}:{password}@{host}:5432/{database_historical}")
 
 
 # Drop duplicates from SQL table Historical
 def remove_null_from_sql_table(table_name):
     try:
-        conn = psycopg2.connect(host=host, database=database, user=user, password=password)
+        conn = psycopg2.connect(host=host, database=database_historical, user=user, password=password)
         cursor = conn.cursor()
         # Delete rows with null timestamp from the specified table
         sql = f"""
         DELETE FROM public."{table_name}"
-        WHERE start_timestamp is null or end_timestamp is null;
+        WHERE start_timestamp is null;
         """
         cursor.execute(sql)
         conn.commit()
