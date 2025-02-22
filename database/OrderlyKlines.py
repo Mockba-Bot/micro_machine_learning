@@ -214,8 +214,8 @@ def fetch_data():
 print("🚀 Running initial fetch...")
 fetch_data()
 
-# Schedule the function to run every 10 minutes
-schedule.every(10).minutes.do(fetch_data)
+# Schedule the function to run every 30 minutes
+schedule.every(20).minutes.do(fetch_data)
 
 # Keep the script running
 while True:
