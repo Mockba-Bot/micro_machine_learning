@@ -9,6 +9,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from dotenv import load_dotenv
 from sqlalchemy import TIMESTAMP, Float, text
 import operations
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import schedule
 
 # ✅ Load environment variables
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
@@ -30,6 +32,29 @@ if ORDERLY_SECRET.startswith("ed25519:"):
 # ✅ Decode Base58 Private Key
 private_key = Ed25519PrivateKey.from_private_bytes(b58decode(ORDERLY_SECRET))
 
+# ✅ Fetch Orderly Trading Pairs
+def fetch_orderly_symbols():
+    url = f"{BASE_URL}/v1/public/info"
+    try:
+        # Make the API request
+        response = requests.get(url)
+        
+        # Parse JSON response
+        data = response.json()
+
+        # Check if the response is successful and contains the "data" key
+        if data.get("success") and "data" in data:
+            # Extract the list of symbols from the "rows" array
+            symbols = [row["symbol"] for row in data["data"]["rows"] if "symbol" in row]
+            return symbols
+        else:
+            print("⚠️ Unexpected API response format or missing 'data' key.")
+            return []  # Return an empty list
+
+    except Exception as e:
+        print(f"❌ Error fetching Orderly symbols: {e}")
+        return []  # Return an empty list
+        
 # ✅ Fetch historical Orderly data and insert into DB
 def fetch_historical_orderly(symbol, interval="1h"):
     """Fetches the latest 1000 rows from Orderly, filters out existing data, and inserts only new records."""
@@ -133,4 +158,40 @@ def fetch_historical_orderly(symbol, interval="1h"):
     operations.remove_null_from_sql_table(tablename)
 
 # ✅ Example Usage: Fetch Historical Data
-fetch_historical_orderly("PERP_AAVE_USDC", interval="1h")
+orderly_symbols = fetch_orderly_symbols()
+timeframes = ['1h', '4h', '1d', '5m']
+
+# Process all intervals of 1h first, then 4h, and so on
+def fetch_data_for_timeframe(timeframe):
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(fetch_historical_orderly, symbol, timeframe) for symbol in orderly_symbols]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"❌ Error fetching data: {e}")
+
+def fetch_data():
+    start_time = time.time()  # Track start time
+
+    for timeframe in timeframes:
+        print(f"🔄 Fetching historical data for all symbols - {timeframe}")
+        fetch_data_for_timeframe(timeframe)
+        time.sleep(1)  # Add a delay to avoid rate limits
+
+    end_time = time.time()  # Track end time
+    elapsed_time = end_time - start_time
+    print(f"✅ Data fetching complete. Total time taken: {elapsed_time:.2f} seconds.")   
+
+# Run the function immediately when the script starts
+print("🚀 Running initial fetch...")
+fetch_data()
+
+# Schedule the function to run every 10 minutes
+schedule.every(10).minutes.do(fetch_data)
+
+# Keep the script running
+while True:
+    schedule.run_pending()
+    time.sleep(1)  # Sleep for a short time to avoid high CPU usage
+
