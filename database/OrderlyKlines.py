@@ -154,7 +154,7 @@ def fetch_historical_orderly(symbol, interval="1h"):
         df_filtered.to_sql(tablename, operations.db_con_historical, if_exists="append", index=True, method="multi")
         print(f"✅ Inserted {len(df_filtered)} new rows into {tablename}.")
     else:
-        print("✅ No new data to insert, all timestamps already exist.")
+        print(f"✅ No new data to insert for {symbol} and {interval}, all timestamps already exist.")
 
     # ✅ Step 7: Remove NULL values from SQL table (optional cleanup step)
     operations.remove_null_from_sql_table(tablename)
@@ -177,7 +177,7 @@ class RateLimiter:
             self.calls = [call for call in self.calls if call > now - self.period]
             if len(self.calls) >= self.max_calls:
                 sleep_time = self.period - (now - self.calls[0])
-                print(f"⏳ Rate limit hit! Sleeping for {sleep_time:.2f} seconds...")
+                # print(f"⏳ Rate limit hit! Sleeping for {sleep_time:.2f} seconds...")
                 time.sleep(sleep_time)
             self.calls.append(time.time())
 
