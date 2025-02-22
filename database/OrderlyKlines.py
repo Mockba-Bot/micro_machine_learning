@@ -11,6 +11,7 @@ from sqlalchemy import TIMESTAMP, Float, text
 import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import schedule
+import threading
 
 # ✅ Load environment variables
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
@@ -21,6 +22,7 @@ BASE_URL = os.getenv("ORDERLY_BASE_URL")
 ORDERLY_ACCOUNT_ID = os.getenv("ORDERLY_ACCOUNT_ID")
 ORDERLY_SECRET = os.getenv("ORDERLY_SECRET")
 ORDERLY_PUBLIC_KEY = os.getenv("ORDERLY_PUBLIC_KEY")
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", 10))
 
 if not ORDERLY_SECRET or not ORDERLY_PUBLIC_KEY:
     raise ValueError("❌ ORDERLY_SECRET or ORDERLY_PUBLIC_KEY environment variables are not set!")
@@ -161,13 +163,38 @@ def fetch_historical_orderly(symbol, interval="1h"):
 orderly_symbols = fetch_orderly_symbols()
 timeframes = ['1h', '4h', '1d', '5m']
 
-# Process all intervals of 1h first, then 4h, and so on
+# Rate limiter function
+class RateLimiter:
+    def __init__(self, max_calls, period):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls = []
+        self.lock = threading.Lock()  # Ensure thread-safe access
+
+    def __call__(self):
+        with self.lock:  # Lock to prevent race conditions
+            now = time.time()
+            self.calls = [call for call in self.calls if call > now - self.period]
+            if len(self.calls) >= self.max_calls:
+                sleep_time = self.period - (now - self.calls[0])
+                print(f"⏳ Rate limit hit! Sleeping for {sleep_time:.2f} seconds...")
+                time.sleep(sleep_time)
+            self.calls.append(time.time())
+
+# Initialize rate limiter with 10 requests per second
+rate_limiter = RateLimiter(max_calls=10, period=1)
+
+# Modified fetch_data_for_timeframe function
 def fetch_data_for_timeframe(timeframe):
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(fetch_historical_orderly, symbol, timeframe) for symbol in orderly_symbols]
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
+        for symbol in orderly_symbols:
+            rate_limiter()  # Ensure rate limit is respected before submitting a task
+            futures.append(executor.submit(fetch_historical_orderly, symbol, timeframe))
+        
         for future in as_completed(futures):
             try:
-                future.result()
+                future.result()  # Wait for result
             except Exception as e:
                 print(f"❌ Error fetching data: {e}")
 
