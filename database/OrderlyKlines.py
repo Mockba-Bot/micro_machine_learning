@@ -193,7 +193,7 @@ def fetch_and_store(interval):
 
         time.sleep(1)  # ✅ Prevents API overload
 
-    print(f"📦 Storing fetched data...")
+    # print(f"📦 Storing fetched data...")
     futures = []
     with ThreadPoolExecutor(max_workers=min(len(all_data), MAX_WORKERS)) as executor:
         for symbol, data in all_data.items():
