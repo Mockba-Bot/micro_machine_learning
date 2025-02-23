@@ -169,16 +169,15 @@ def store_data(symbol, interval, df):
     
 # ✅ Fetch and store historical data efficiently
 def fetch_and_store(interval):
-    start_time = time.time()
     orderly_symbols = fetch_orderly_symbols()
     all_data = {}
     batch_size = 10  # ✅ Process 10 symbols in parallel
 
-    print(f"📥 Fetching symbols data...")
+    # print(f"📥 Fetching symbols data...")
 
     for i in range(0, len(orderly_symbols), batch_size):
         batch = orderly_symbols[i:i + batch_size]
-        print(f"🔁 Processing batch: {batch}")
+        # print(f"🔁 Processing batch: {batch}")
 
         # ✅ Fetch data in parallel (Each batch runs in parallel)
         with ThreadPoolExecutor(max_workers=batch_size) as executor:
@@ -209,14 +208,16 @@ def fetch_and_store(interval):
             except Exception as e:
                 print(f"❌ Error inserting data: {e}")
 
-    end_time = time.time()
-    print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")    
-
+    
 
 # ✅ Loop through each timeframe and process it separately
 def run_all_timeframes():
+    print(f"📥 Fetching symbols data...")
+    start_time = time.time()
     for timeframe in timeframes:
         fetch_and_store(timeframe)
+    end_time = time.time()
+    print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")    
 
 run_all_timeframes()
 
