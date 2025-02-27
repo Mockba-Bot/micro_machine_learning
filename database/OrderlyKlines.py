@@ -12,6 +12,7 @@ import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import schedule
 import threading
+import redis
 
 # ✅ Load environment variables
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
@@ -226,7 +227,7 @@ def fetch_and_store(interval):
 
 # ✅ Loop through each timeframe and process it separately
 def run_all_timeframes():
-    print(f"📥 Fetching symbols data...")
+    # print(f"📥 Fetching symbols data...")
     start_time = time.time()
     for timeframe in timeframes:
         fetch_and_store(timeframe)
