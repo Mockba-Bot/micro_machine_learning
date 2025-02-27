@@ -14,6 +14,7 @@ import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
+from historical_data import get_historical_data_limit
 import requests
 import warnings
 warnings.filterwarnings("ignore")
@@ -31,20 +32,6 @@ CPU_COUNT = os.getenv("CPU_COUNT")
 cpu_count = os.cpu_count()-int(CPU_COUNT)
 BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
-
-def get_historical_data(symbol, interval='1h', limit=200):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    response = requests.get(url)
-    data = response.json()
-    df = pd.DataFrame(data, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time',
-        'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume',
-        'taker_buy_quote_asset_volume', 'ignore'
-    ])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    numeric_columns = ['open', 'high', 'low', 'close', 'volume']
-    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
-    return df
 
 ############################################################################################################
 # Linear Regression Model
@@ -397,7 +384,7 @@ def train_technical_models(symbol, interval):
     Returns:
     None
     """
-    df = get_historical_data(symbol, interval, limit=500)
+    df = get_historical_data_limit(symbol, interval, limit=500)
     train_or_update_linear_model(df, symbol, interval)
     train_or_update_arima(df, symbol, interval)
     train_or_update_xgboost(df, symbol, interval)

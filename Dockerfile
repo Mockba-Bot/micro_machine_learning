@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
-# Run the Python script
-CMD ["python", "database/OrderlyKlines.py"]
+# Run both Python scripts in parallel
+CMD python database/OrderlyKlines.py & python main.py & wait

@@ -15,6 +15,7 @@ from datetime import timedelta
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database import getHistorical
 from database import operations
+from historical_data import get_historical_data
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -31,28 +32,6 @@ CPU_COUNT = os.getenv("CPU_COUNT")
 cpu_count = os.cpu_count()-int(CPU_COUNT)
 BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
-# Fetch historical data from the database
-def get_historical_data(pair, timeframe, values):
-    field = '"timestamp"'
-    table = f'"{pair}_{timeframe}"'
-    f, t = values.split('|')
-    
-    query = text(f"""
-        SELECT DISTINCT {field}, low, high, volume, close 
-        FROM public.{table} 
-        WHERE timestamp >= :start_time AND timestamp <= :end_time 
-        ORDER BY 1
-    """)
-    
-    df = pd.read_sql(query, con=operations.db_con, params={"start_time": f, "end_time": t})
-    
-    # Convert columns to numeric types
-    df['close'] = pd.to_numeric(df['close'])
-    df['high'] = pd.to_numeric(df['high'])
-    df['low'] = pd.to_numeric(df['low'])
-    df['volume'] = pd.to_numeric(df['volume'])
-    
-    return df
 
 # Add technical indicators to the data
 def add_indicators(data):

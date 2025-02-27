@@ -10,6 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import RandomizedSearchCV
 from scipy.stats import randint
 from dotenv import load_dotenv
+from historical_data import get_historical_data_limit
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -25,21 +26,6 @@ load_dotenv(dotenv_path=dotenv_path)
 CPU_COUNT = os.getenv("CPU_COUNT")
 cpu_count = os.cpu_count() - int(CPU_COUNT)
 BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
-
-# Fetch historical data from Binance API
-def get_historical_data(symbol, interval='1h', limit=200):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    response = requests.get(url)
-    data = response.json()
-    df = pd.DataFrame(data, columns=[
-        'timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time',
-        'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume',
-        'taker_buy_quote_asset_volume', 'ignore'
-    ])
-    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-    numeric_columns = ['open', 'high', 'low', 'close', 'volume']
-    df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric)
-    return df
 
 # Adjust limit based on interval
 def get_limit_for_interval(interval):
@@ -67,7 +53,7 @@ def train_or_update_xgboost_model(symbol, interval, look_back=60):
 
     # Get historical data
     limit = get_limit_for_interval(interval)
-    data = get_historical_data(symbol, interval, limit)
+    data = get_historical_data_limit(symbol, interval, limit)
 
     # Feature extraction and scaling
     scaler = MinMaxScaler(feature_range=(0, 1))
@@ -129,7 +115,7 @@ def train_models(symbol, intervals):
         train_or_update_xgboost_model(symbol, interval)
 
 # Run training for selected intervals
-if __name__ == "__main__":
-    symbol = "APTUSDT"
-    intervals = ["1h", "4h", "1d"]
-    train_models(symbol, intervals)
+# if __name__ == "__main__":
+#     symbol = "PERP_APT_USDC"
+#     intervals = ["1h", "4h", "1d"]
+#     train_models(symbol, intervals)

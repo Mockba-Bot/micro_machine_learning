@@ -10,8 +10,8 @@ from sqlalchemy.sql import text
 from datetime import datetime
 from dateutil import parser
 from dotenv import load_dotenv
-import operations
-
+# import operations
+from database import operations
 # ✅ Load environment variables
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
 load_dotenv(dotenv_path=dotenv_path)
