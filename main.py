@@ -13,46 +13,18 @@ from database import getHistorical
 
 # Load environment variables from the .env file
 load_dotenv(dotenv_path=".env.micro.machine.learning")
-# Get the Redis URL from the environment variable
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-# Parse the Redis URL
-url = urlparse(redis_url)
-
-# Create a Redis connection
-redis_client = redis.Redis(
-    host=url.hostname,
-    port=url.port,
-    db=int(url.path.lstrip('/')) if url.path else 0
-)
-
-# Test the connection
-try:
-    redis_client.ping()
-    print("Connected to Redis!")
-except redis.ConnectionError:
-    print("Failed to connect to Redis.")
 
 # ✅ Orderly API Config
 BASE_URL = os.getenv("ORDERLY_BASE_URL")
 
 # ✅ Fetch Orderly Trading Pairs
 def fetch_orderly_symbols():
-    cache_key = "orderly_symbols"
-    cached_symbols = redis_client.get(cache_key)
-    
-    if cached_symbols:
-        print("✅ Fetched symbols from Redis cache.")
-        return cached_symbols.split(',')
-
     url = f"{BASE_URL}/v1/public/info"
     try:
         response = requests.get(url)
         data = response.json()
         if data.get("success") and "data" in data:
             symbols = [row["symbol"] for row in data["data"]["rows"] if "symbol" in row]
-            redis_client.setex(cache_key, timedelta(days=7), ','.join(symbols))
-            print("✅ Fetched symbols from API and stored in Redis cache.")
             return symbols
         else:
             print("⚠️ Unexpected API response format or missing 'data' key.")
