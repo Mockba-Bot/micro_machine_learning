@@ -18,9 +18,25 @@ import redis
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
 load_dotenv(dotenv_path=dotenv_path)
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
-# Initialize Redis connection
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+# Get the Redis URL from the environment variable
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Parse the Redis URL
+url = urlparse(redis_url)
+
+# Create a Redis connection
+redis_client = redis.Redis(
+    host=url.hostname,
+    port=url.port,
+    db=int(url.path.lstrip('/')) if url.path else 0
+)
+
+# Test the connection
+try:
+    redis_client.ping()
+    print("Connected to Redis!")
+except redis.ConnectionError:
+    print("Failed to connect to Redis.")
 
 # ✅ Orderly API Config
 BASE_URL = os.getenv("ORDERLY_BASE_URL")
@@ -132,7 +148,7 @@ def fetch_symbol_data(symbol, interval):
     """Fetches all timeframes for a symbol sequentially to avoid rate limit errors."""
     symbol_data = {}
 
-    print(f"📥 Fetching {symbol} {interval} data...")
+    # print(f"📥 Fetching {symbol} {interval} data...")
     df = fetch_historical_orderly(symbol, interval)
     if df is not None:
         symbol_data[interval] = df

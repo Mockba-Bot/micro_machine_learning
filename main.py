@@ -13,9 +13,25 @@ from database import getHistorical
 
 # Load environment variables from the .env file
 load_dotenv(dotenv_path=".env.micro.machine.learning")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
-# Initialize Redis connection
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)  
+# Get the Redis URL from the environment variable
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Parse the Redis URL
+url = urlparse(redis_url)
+
+# Create a Redis connection
+redis_client = redis.Redis(
+    host=url.hostname,
+    port=url.port,
+    db=int(url.path.lstrip('/')) if url.path else 0
+)
+
+# Test the connection
+try:
+    redis_client.ping()
+    print("Connected to Redis!")
+except redis.ConnectionError:
+    print("Failed to connect to Redis.")
 
 # ✅ Orderly API Config
 BASE_URL = os.getenv("ORDERLY_BASE_URL")
