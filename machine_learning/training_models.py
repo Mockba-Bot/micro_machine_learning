@@ -6,6 +6,7 @@ from sklearn.ensemble import RandomForestClassifier
 from scipy.stats import randint
 import psycopg2  # Library for PostgreSQL connection
 from dotenv import load_dotenv
+import numpy as np
 import joblib  # Library for model serialization
 from datetime import datetime, timedelta  # Import timedelta from datetime
 from sqlalchemy import text
@@ -150,7 +151,70 @@ def add_indicators(data):
     return data
 
 # Train the machine learning model with advanced hyperparameter tuning
-def train_models_swing(token, model_path):
+def train_model(data, model_path, features):
+    # Calculate return and target columns
+    data['return'] = data['close'].pct_change().shift(-1)
+    data['target'] = (data['return'] > 0).astype(int)
+    
+    # Prepare training and testing datasets
+    X = data[features].dropna()
+    y = data['target'].dropna().loc[X.index]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Define hyperparameter search space
+    param_distributions = {
+        'n_estimators': randint(100, 500),
+        'max_depth': randint(10, 80),
+        'min_samples_split': randint(2, 20),
+        'min_samples_leaf': randint(1, 20),
+        'max_features': ['sqrt', 'log2']
+    }
+    
+    # Perform randomized hyperparameter search
+    randomized_search = RandomizedSearchCV(
+        RandomForestClassifier(random_state=42), 
+        param_distributions, 
+        n_iter=300,  # Increased number of iterations
+        cv=3, 
+        scoring='accuracy', 
+        random_state=42,
+        n_jobs=cpu_count
+    )
+    randomized_search.fit(X_train, y_train)
+    
+    # Get the best model from the search
+    best_model = randomized_search.best_estimator_
+
+    # Save the trained model to disk
+    joblib.dump(best_model, model_path)
+
+
+# Update the existing model with new data
+def update_model(existing_model, new_data, features):
+    """
+    Update the existing model with new data using the `warm_start` approach.
+    """
+    # Calculate return and target columns
+    new_data['return'] = new_data['close'].pct_change().shift(-1)
+    new_data['target'] = (new_data['return'] > 0).astype(int)
+
+    # Prepare the dataset
+    X_new = new_data[features].dropna()
+    y_new = new_data['target'].dropna().loc[X_new.index]
+
+    # Ensure `existing_model` is a RandomForestClassifier
+    if isinstance(existing_model, RandomForestClassifier):
+        existing_model.n_estimators += 50  # Add 50 new trees instead of retraining
+        existing_model.set_params(warm_start=True)
+        existing_model.fit(X_new, y_new)
+    else:
+        raise ValueError("Expected a RandomForestClassifier model for incremental training")
+
+    return existing_model
+
+
+# Train the machine learning model with advanced hyperparameter tuning
+def train_machine_learning(pair, timeframe):
     MODEL_KEY = f'Mockba/trained_models/trained_model_{pair}_{timeframe}.pkl'
     local_model_path = f'temp/trained_model_{pair}_{timeframe}.pkl'
 
@@ -159,9 +223,6 @@ def train_models_swing(token, model_path):
     current_date = now.strftime('%Y-%m-%d')
     values = f'2024-01-01|{current_date}'
 
-    # Fetch historical data
-    getHistorical.get_all_binance(pair, timeframe, token, save=True)
-
     # Get historical data
     data = get_historical_data(pair, timeframe, values)
 
@@ -169,18 +230,8 @@ def train_models_swing(token, model_path):
     data = add_indicators(data)
 
     # Automatically determine the feature columns (Exclude non-numeric ones)
-    exclude_columns = ['timestamp', 'return', 'target', 'tr']
+    exclude_columns = ['start_timestamp']
     features = [col for col in data.columns if col not in exclude_columns]
-
-    print(f"Using Features: {features}")
-
-    # Define target variable
-    data['target'] = (data['close'].shift(-1) > data['close']).astype(int)
-
-    # Drop NaN values
-    data = data.dropna(subset=features + ['target'])
-
-    print("Train Model")
 
     # Check if the model exists in storage
     if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
@@ -203,59 +254,12 @@ def train_models_swing(token, model_path):
 
     print("✅ Model training complete.")    
 
-# Update the existing model with new data
-def update_model(existing_model, new_data, features):
-    # Calculate return and target columns for the new data
-    new_data['return'] = new_data['close'].pct_change().shift(-1)
-    new_data['target'] = (new_data['return'] > 0).astype(int)
-    
-    # Prepare the new data for training
-    X_new = new_data[features].dropna()
-    y_new = new_data['target'].dropna().loc[X_new.index]
-    
-    # Update the existing model with the new data
-    existing_model.fit(X_new, y_new)
-
-# Train the machine learning models for all currency pairs and timeframes
-def train_models_swing(token, pair, timeframe):
-    MODEL_KEY = f'Mockba/trained_models/trained_model_{pair}_{timeframe}.pkl'
-    local_model_path = f'temp/trained_model_{pair}_{timeframe}.pkl'
-    # Get the current date
-    now = datetime.now()
-    current_date = now.strftime('%Y-%m-%d')
-    values = f'2024-01-01|{current_date}'
-    # Get the model path to verify if the model already exists
-    # Fetch historical data and add technical indicators
-    getHistorical.get_all_binance(pair, timeframe, token, save=True)
-    # Get the historical data for the pair and timeframe
-    data = get_historical_data(pair, timeframe, values)
-    data = add_indicators(data)
-    # Check if the model exists in DigitalOcean Spaces
-    if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
-        # Load the existing model
-        print("Loaded existing model.")
-        model = joblib.load(local_model_path)
-        features = ['rsi', 'macd', 'macd_signal', 'macd_diff', 'bollinger_hband', 'bollinger_mavg', 'bollinger_lband', 'ema', 'ATR']
-        update_model(model, data, features)
-        upload_model(BUCKET_NAME, MODEL_KEY, local_model_path)
-    else:
-        # Train a new model if it doesn't exist
-        print("No existing model found. Training a new model.")
-        train_model(data, local_model_path)
-        upload_model(BUCKET_NAME, MODEL_KEY, local_model_path)
-
-    # Delete the local file after uploading
-    if os.path.exists(local_model_path):
-        os.remove(local_model_path)
-    else:
-        print(f"Local file {local_model_path} does not exist.")
-    print("Model training complete.")    
 
 # Main function to train or update models for multiple intervals
 def train_models(symbol, intervals):
     for interval in intervals:
-        train_models_swing('000000', symbol, interval)
+        train_machine_learning(symbol, interval)
 
 # if __name__ == "__main__":
-      # intervals = ["1h", "4h", "1d"]
-#     train_models_swing('000000', 'APTUSDT', intervals)
+#     intervals = ["1h", "4h", "1d"]
+#     train_models('PERP_APT_USDC', intervals)

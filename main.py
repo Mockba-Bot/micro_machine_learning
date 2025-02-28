@@ -36,45 +36,45 @@ def fetch_orderly_symbols():
 if __name__ == "__main__":
     symbols = fetch_orderly_symbols()
     for symbol in symbols:
-        # if symbol == 'PERP_APT_USDC':
-        intervals = ['1h', '4h', '1d']
-        try:
-            # Training for Elliot Waves
-            print("---TRAINING ELLIOT WAVES---")
-            elliot_waves_analysis.train_models(symbol, intervals)
-            time.sleep(2)
+        if symbol == 'PERP_APT_USDC':
+            intervals = ['1h', '4h', '1d']
+            try:
+                # Training for Elliot Waves
+                print("---TRAINING ELLIOT WAVES---")
+                elliot_waves_analysis.train_models(symbol, intervals)
+                time.sleep(2)
 
-            print("---TRAINING SCALPING MODELS---")
-            # Training for scalping models
-            stop_loss_percentage = 10 # 10% stop loss
-            profit_target_from = 0.1 # 1% profit target
-            profit_target_to = 0.3 # 3% profit target
-            partial_exit_threshold_from = 25.0 # 25% partial exit threshold
-            partial_exit_threshold_to = 30.0 # 30% partial exit threshold
-            exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
-            exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
-            partial_exit_amount = 0.15 # 15% partial exit amount
-            scalping_models.train_scalping_models('000000', symbol, '5m', stop_loss_percentage, profit_target_from, profit_target_to, partial_exit_threshold_from, partial_exit_threshold_to, exit_remaining_percentage_from, exit_remaining_percentage_to, partial_exit_amount)
-            time.sleep(2)
+                print("---TRAINING SCALPING MODELS---")
+                # Training for scalping models
+                stop_loss_percentage = 10 # 10% stop loss
+                profit_target_from = 0.1 # 1% profit target
+                profit_target_to = 0.3 # 3% profit target
+                partial_exit_threshold_from = 25.0 # 25% partial exit threshold
+                partial_exit_threshold_to = 30.0 # 30% partial exit threshold
+                exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
+                exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
+                partial_exit_amount = 0.15 # 15% partial exit amount
+                scalping_models.train_scalping_models('000000', symbol, '5m', stop_loss_percentage, profit_target_from, profit_target_to, partial_exit_threshold_from, partial_exit_threshold_to, exit_remaining_percentage_from, exit_remaining_percentage_to, partial_exit_amount)
+                time.sleep(2)
 
-            print("---TRAINING SIGNAL MODELS---")
-            # Training for signal models
-            signal_models.train_models(symbol, intervals)
-            time.sleep(2)
+                print("---TRAINING SIGNAL MODELS---")
+                # Training for signal models
+                signal_models.train_models(symbol, intervals)
+                time.sleep(2)
 
-            print("---TRAINING TECHNICAL ANALYSIS---")
-            # Training for technical analysis
-            technical_analysis.train_models(symbol, intervals)
-            time.sleep(2)
+                print("---TRAINING TECHNICAL ANALYSIS---")
+                # # Training for technical analysis
+                technical_analysis.train_models(symbol, intervals)
+                time.sleep(2)
 
-            print("---TRAINING MACHINE LEARNING MODELS---")
-            # Training for machine learning models
-            training_models.train_models(symbol, intervals)
+                print("---TRAINING MACHINE LEARNING MODELS---")
+                # Training for machine learning models
+                training_models.train_models(symbol, intervals)
 
-        except Exception as e:
-            print(f"Error processing data for {symbol}: {e}")
-            continue
+            except Exception as e:
+                print(f"Error processing data for {symbol}: {e}")
+                continue
 
-        # Add a 30-second delay after each loop iteration
-        time.sleep(10)
+            # Add a 30-second delay after each loop iteration
+            time.sleep(10)
     print("Data processing complete.")

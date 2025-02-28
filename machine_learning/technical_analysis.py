@@ -49,9 +49,9 @@ def add_features(df):
     """
     df = df.copy()
     
-    df['timestamp'] = pd.to_datetime(df['timestamp'])  # Ensure it's datetime format
-    df['hour'] = df['timestamp'].dt.hour  # Extract hour
-    df['day_of_week'] = df['timestamp'].dt.dayofweek  # Extract day of the week
+    df['start_timestamp'] = pd.to_datetime(df['start_timestamp'])  # Ensure it's datetime format
+    df['hour'] = df['start_timestamp'].dt.hour  # Extract hour
+    df['day_of_week'] = df['start_timestamp'].dt.dayofweek  # Extract day of the week
 
     
     # Technical Indicators

@@ -69,7 +69,7 @@ def calculate_bollinger_bands(series, window=20, num_std=2):
 
 # Function to add technical indicators
 def add_technical_indicators(df):
-    print(f"Adding technical indicators for {df['timestamp'].iloc[0].date()} - {df['timestamp'].iloc[-1].date()}")
+    print(f"Adding technical indicators for {df['start_timestamp'].iloc[0].date()} - {df['start_timestamp'].iloc[-1].date()}")
     
     try:
         df['rsi'] = calculate_rsi(df['close'])

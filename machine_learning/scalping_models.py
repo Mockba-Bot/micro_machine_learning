@@ -393,9 +393,6 @@ def train_scalping_models(token, pair, timeframe, stop_loss_percentage, profit_t
     now = datetime.now()
     current_date = now.strftime('%Y-%m-%d')
     values = f'2024-11-01|{current_date}'
-    # Get the model path to verify if the model already exists
-    # Fetch historical data and add technical indicators
-    getHistorical.get_all_binance(pair, timeframe, token, save=True)
     # Get the historical data for the pair and timeframe
     data = get_historical_data(pair, timeframe, values)
     data = calculate_indicators(data)
