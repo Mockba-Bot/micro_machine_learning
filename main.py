@@ -5,11 +5,12 @@ import redis
 import requests
 from datetime import timedelta
 import time  # Import time module
+import schedule
 
 # Add the directory containing your modules to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'machine_learning')))
 from machine_learning import bucket, elliot_waves_analysis, scalping_models, signal_models, technical_analysis, training_models
-from database import getHistorical
+from database.OrderlyKlines import run_all_timeframes
 
 # Load environment variables from the .env file
 load_dotenv(dotenv_path=".env.micro.machine.learning")
@@ -33,8 +34,11 @@ def fetch_orderly_symbols():
         print(f"❌ Error fetching Orderly symbols: {e}")
         return []
 
-if __name__ == "__main__":
+def run_machine_learning_and_historical_data():
     symbols = fetch_orderly_symbols()
+    #run historical data first
+    run_all_timeframes(symbols)
+    #run machine learning
     for symbol in symbols:
         # if symbol == 'PERP_APT_USDC':
         intervals = ['1h', '4h', '1d']
@@ -78,3 +82,14 @@ if __name__ == "__main__":
         # Add a 30-second delay after each loop iteration
         time.sleep(10)
     print("Data processing complete.")
+
+
+
+run_machine_learning_and_historical_data()
+
+# ✅ Schedule every 20 minutes
+schedule.every(60).minutes.do(run_machine_learning_and_historical_data)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)

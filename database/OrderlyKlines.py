@@ -8,7 +8,7 @@ from base64 import urlsafe_b64encode
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from dotenv import load_dotenv
 from sqlalchemy import TIMESTAMP, Float, text
-import operations
+from database import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import schedule
 import threading
@@ -171,8 +171,8 @@ def store_data(symbol, interval, df):
 
     
 # ✅ Fetch and store historical data efficiently
-def fetch_and_store(interval):
-    orderly_symbols = fetch_orderly_symbols()
+def fetch_and_store(interval, orderly_symbols):
+    # orderly_symbols = fetch_orderly_symbols()
     all_data = {}
     batch_size = 10  # ✅ Process 10 symbols in parallel
 
@@ -214,19 +214,10 @@ def fetch_and_store(interval):
     
 
 # ✅ Loop through each timeframe and process it separately
-def run_all_timeframes():
-    # print(f"📥 Fetching symbols data...")
+def run_all_timeframes(orderly_symbols):
+    print(f"📥 Fetching symbols data...")
     start_time = time.time()
     for timeframe in timeframes:
-        fetch_and_store(timeframe)
+        fetch_and_store(timeframe, orderly_symbols)
     end_time = time.time()
-    print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")    
-
-run_all_timeframes()
-
-# ✅ Schedule every 20 minutes
-schedule.every(20).minutes.do(run_all_timeframes)
-
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+    print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")
