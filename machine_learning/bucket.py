@@ -29,7 +29,7 @@ def download_model(bucket_name, key, local_path):
     """Download a file from DigitalOcean Spaces."""
     try:
         s3_client.download_file(bucket_name, key, local_path)
-        print(f"Model downloaded to {local_path}")
+        # print(f"Model downloaded to {local_path}")
         return True
     except Exception as e:
         print(f"Model not found it needs to be trained")
@@ -39,6 +39,6 @@ def upload_model(bucket_name, key, local_path):
     """Upload a file to DigitalOcean Spaces."""
     try:
         s3_client.upload_file(local_path, bucket_name, key)
-        print(f"Model uploaded to {bucket_name}/{key}")
+        # print(f"Model uploaded to {bucket_name}/{key}")
     except Exception as e:
         print(f"Error uploading model: {e}")

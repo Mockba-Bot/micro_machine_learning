@@ -87,7 +87,7 @@ def run_machine_learning_and_historical_data():
 
 run_machine_learning_and_historical_data()
 
-# ✅ Schedule every 20 minutes
+# ✅ Schedule every 60 minutes
 schedule.every(60).minutes.do(run_machine_learning_and_historical_data)
 
 while True:
