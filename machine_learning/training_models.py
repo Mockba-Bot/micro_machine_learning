@@ -62,7 +62,7 @@ def add_indicators(data):
     data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
 
     # --- Exponential Moving Averages (EMA) ---
-    data['ema_21'] = data['close'].ewm(span=21, adjust=False).mean()
+    data['ema_20'] = data['close'].ewm(span=20, adjust=False).mean()
     data['ema_50'] = data['close'].ewm(span=50, adjust=False).mean()
     data['ema_200'] = data['close'].ewm(span=200, adjust=False).mean()
 
