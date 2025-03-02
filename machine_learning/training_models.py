@@ -36,36 +36,48 @@ BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
 # Add technical indicators to the data
 def add_indicators(data):
-    # Ensure the columns are of numeric type
-    data['close'] = pd.to_numeric(data['close'])
-    data['high'] = pd.to_numeric(data['high'])
-    data['low'] = pd.to_numeric(data['low'])
-    data['volume'] = pd.to_numeric(data['volume'])
+    """Adds advanced technical indicators to a price dataset."""
 
-    # Relative Strength Index (RSI)
+    # Ensure the columns are of numeric type
+    data[['close', 'high', 'low', 'volume']] = data[['close', 'high', 'low', 'volume']].apply(pd.to_numeric)
+
+    # --- Relative Strength Index (RSI) ---
     delta = data['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+    loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
     rs = gain / loss
     data['rsi'] = 100 - (100 / (1 + rs))
 
-    # Moving Average Convergence Divergence (MACD)
+    # --- Moving Average Convergence Divergence (MACD) ---
     data['ema_12'] = data['close'].ewm(span=12, adjust=False).mean()
     data['ema_26'] = data['close'].ewm(span=26, adjust=False).mean()
     data['macd'] = data['ema_12'] - data['ema_26']
     data['macd_signal'] = data['macd'].ewm(span=9, adjust=False).mean()
     data['macd_diff'] = data['macd'] - data['macd_signal']
 
-    # Bollinger Bands
+    # --- Bollinger Bands ---
     data['bollinger_mavg'] = data['close'].rolling(window=20).mean()
     data['bollinger_std'] = data['close'].rolling(window=20).std()
     data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
     data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
 
-    # Exponential Moving Average (EMA)
-    data['ema'] = data['close'].ewm(span=21, adjust=False).mean()
+    # --- Exponential Moving Averages (EMA) ---
+    data['ema_20'] = data['close'].ewm(span=20, adjust=False).mean()
+    data['ema_50'] = data['close'].ewm(span=50, adjust=False).mean()
+    data['ema_200'] = data['close'].ewm(span=200, adjust=False).mean()
 
-    # Average True Range (ATR) - Volatility indicator
+    # --- Simple Moving Averages (SMA) ---
+    data['sma_5'] = data['close'].rolling(window=5).mean()
+    data['sma_20'] = data['close'].rolling(window=20).mean()
+    data['sma_50'] = data['close'].rolling(window=50).mean()
+    data['sma_200'] = data['close'].rolling(window=200).mean()
+
+    # --- Stochastic Oscillator ---
+    data['stoch_k'] = ((data['close'] - data['low'].rolling(14).min()) /
+                       (data['high'].rolling(14).max() - data['low'].rolling(14).min())) * 100
+    data['stoch_d'] = data['stoch_k'].rolling(3).mean()
+
+    # --- Average True Range (ATR) ---
     data['tr'] = pd.concat([
         data['high'] - data['low'],
         (data['high'] - data['close'].shift()).abs(),
@@ -73,8 +85,73 @@ def add_indicators(data):
     ], axis=1).max(axis=1)
     data['atr'] = data['tr'].rolling(window=14).mean()
 
+    # --- VWAP (Volume Weighted Average Price) ---
+    data['vwap'] = (data['volume'] * (data['high'] + data['low'] + data['close']) / 3).cumsum() / data['volume'].cumsum()
+
+    # --- ADX (Average Directional Index) ---
+    plus_dm = data['high'].diff()
+    minus_dm = data['low'].diff()
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm > 0] = 0
+    atr = data['atr']
+    plus_di = 100 * (plus_dm.ewm(span=14, adjust=False).mean() / atr)
+    minus_di = abs(100 * (minus_dm.ewm(span=14, adjust=False).mean() / atr))
+    adx = 100 * abs((plus_di - minus_di) / (plus_di + minus_di)).rolling(14).mean()
+    data['adx'] = adx
+
+    # --- Commodity Channel Index (CCI) ---
+    typical_price = (data['high'] + data['low'] + data['close']) / 3
+    mean_deviation = typical_price.rolling(window=20).apply(lambda x: np.mean(np.abs(x - np.mean(x))))
+    data['cci'] = (typical_price - typical_price.rolling(window=20).mean()) / (0.015 * mean_deviation)
+
+    # --- Williams %R (Momentum Indicator) ---
+    data['williams_r'] = (data['high'].rolling(14).max() - data['close']) / \
+                          (data['high'].rolling(14).max() - data['low'].rolling(14).min()) * -100
+
+    # --- Momentum Indicator ---
+    data['momentum'] = data['close'].diff(periods=10)
+
+    # --- Rate of Change (ROC) ---
+    data['roc'] = data['close'].pct_change(periods=10) * 100
+
+    # --- Parabolic SAR (Stop and Reverse) ---
+    data['sar'] = np.nan
+    af = 0.02  # Acceleration Factor
+    max_af = 0.2
+    ep = data['high'][0]  # Extreme point
+    sar = data['low'][0]  # Start SAR with first low
+    trend = 1  # 1 = uptrend, -1 = downtrend
+    for i in range(1, len(data)):
+        prev_sar = sar
+        sar = prev_sar + af * (ep - prev_sar)
+        if trend == 1:
+            if data['low'][i] < sar:
+                trend = -1
+                sar = ep
+                ep = data['low'][i]
+                af = 0.02
+        else:
+            if data['high'][i] > sar:
+                trend = 1
+                sar = ep
+                ep = data['high'][i]
+                af = 0.02
+        if af < max_af:
+            af += 0.02
+        data.loc[data.index[i], 'sar'] = sar
+
+    # --- Ichimoku Cloud Components ---
+    data['tenkan_sen'] = (data['high'].rolling(window=9).max() + data['low'].rolling(window=9).min()) / 2
+    data['kijun_sen'] = (data['high'].rolling(window=26).max() + data['low'].rolling(window=26).min()) / 2
+    data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26)
+    data['senkou_span_b'] = ((data['high'].rolling(window=52).max() + data['low'].rolling(window=52).min()) / 2).shift(26)
+    data['chikou_span'] = data['close'].shift(-26)
+
+    # Fill NaN values after calculations
+    data.fillna(method='bfill', inplace=True)
+
     return data
-    
+
 # Train the machine learning model with advanced hyperparameter tuning
 def train_model(data, model_path, features):
     # Calculate return and target columns
