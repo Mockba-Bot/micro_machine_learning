@@ -67,6 +67,8 @@ def add_indicators(data):
     data['ema_200'] = data['close'].ewm(span=200, adjust=False).mean()
 
     # --- Simple Moving Averages (SMA) ---
+    data['sma_5'] = data['close'].rolling(window=5).mean()
+    data['sma_20'] = data['close'].rolling(window=20).mean()
     data['sma_50'] = data['close'].rolling(window=50).mean()
     data['sma_200'] = data['close'].rolling(window=200).mean()
 
