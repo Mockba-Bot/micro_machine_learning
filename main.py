@@ -73,7 +73,19 @@ def run_machine_learning_and_historical_data():
 
             print("---TRAINING MACHINE LEARNING MODELS---")
             # Training for machine learning models
-            training_models.train_models(symbol, intervals)
+            # Define the features array
+            features = [
+                ["rsi", "macd", "macd_signal", "macd_diff", "bollinger_hband", "bollinger_mavg", "bollinger_lband", "ema_20", "atr"],
+                ["rsi", "macd", "macd_signal", "ema_20", "ema_50", "atr"],
+                ["bollinger_mavg", "bollinger_hband", "bollinger_lband", "rsi", "cci", "atr"],
+                ["atr", "bollinger_hband", "bollinger_lband", "adx", "momentum", "ema_50"],
+                ["williams_r", "rsi", "macd", "macd_signal", "bollinger_mavg", "roc"],
+                ["vwap", "ema_50", "ema_200", "adx", "sar", "senkou_span_a"]
+            ]
+            # Iterate over each set of features and train models
+            for i, feature_set in enumerate(features):
+                print(f"Training models with feature set {i}: {feature_set}")
+                training_models.train_models(symbol, intervals, feature_set)
 
         except Exception as e:
             print(f"Error processing data for {symbol}: {e}")
@@ -87,9 +99,9 @@ def run_machine_learning_and_historical_data():
 
 run_machine_learning_and_historical_data()
 
-# ✅ Schedule every 60 minutes
-schedule.every(60).minutes.do(run_machine_learning_and_historical_data)
+# # ✅ Schedule every 60 minutes
+# schedule.every(60).minutes.do(run_machine_learning_and_historical_data)
 
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+# while True:
+#     schedule.run_pending()
+#     time.sleep(1)
