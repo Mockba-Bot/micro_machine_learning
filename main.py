@@ -41,51 +41,62 @@ def run_machine_learning_and_historical_data():
     #run machine learning
     for symbol in symbols:
         # if symbol == 'PERP_APT_USDC':
-        intervals = ['1h', '4h', '1d']
+        intervals = ['1h']
         try:
             # Training for Elliot Waves
-            print("---TRAINING ELLIOT WAVES---")
-            elliot_waves_analysis.train_models(symbol, intervals)
-            time.sleep(2)
+            # print("---TRAINING ELLIOT WAVES---")
+            # elliot_waves_analysis.train_models(symbol, intervals)
+            # time.sleep(2)
 
-            print("---TRAINING SCALPING MODELS---")
-            # Training for scalping models
-            stop_loss_percentage = 10 # 10% stop loss
-            profit_target_from = 0.1 # 1% profit target
-            profit_target_to = 0.3 # 3% profit target
-            partial_exit_threshold_from = 25.0 # 25% partial exit threshold
-            partial_exit_threshold_to = 30.0 # 30% partial exit threshold
-            exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
-            exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
-            partial_exit_amount = 0.15 # 15% partial exit amount
-            scalping_models.train_scalping_models('000000', symbol, '5m', stop_loss_percentage, profit_target_from, profit_target_to, partial_exit_threshold_from, partial_exit_threshold_to, exit_remaining_percentage_from, exit_remaining_percentage_to, partial_exit_amount)
-            time.sleep(2)
+            # print("---TRAINING SCALPING MODELS---")
+            # # Training for scalping models
+            # stop_loss_percentage = 10 # 10% stop loss
+            # profit_target_from = 0.1 # 1% profit target
+            # profit_target_to = 0.3 # 3% profit target
+            # partial_exit_threshold_from = 25.0 # 25% partial exit threshold
+            # partial_exit_threshold_to = 30.0 # 30% partial exit threshold
+            # exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
+            # exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
+            # partial_exit_amount = 0.15 # 15% partial exit amount
+            # scalping_models.train_scalping_models('000000', symbol, '5m', stop_loss_percentage, profit_target_from, profit_target_to, partial_exit_threshold_from, partial_exit_threshold_to, exit_remaining_percentage_from, exit_remaining_percentage_to, partial_exit_amount)
+            # time.sleep(2)
 
-            print("---TRAINING SIGNAL MODELS---")
-            # Training for signal models
-            signal_models.train_models(symbol, intervals)
-            time.sleep(2)
+            # print("---TRAINING SIGNAL MODELS---")
+            # # Training for signal models
+            # signal_models.train_models(symbol, intervals)
+            # time.sleep(2)
 
-            print("---TRAINING TECHNICAL ANALYSIS---")
-            # # Training for technical analysis
-            technical_analysis.train_models(symbol, intervals)
-            time.sleep(2)
+            # print("---TRAINING TECHNICAL ANALYSIS---")
+            # # # Training for technical analysis
+            # technical_analysis.train_models(symbol, intervals)
+            # time.sleep(2)
 
             print("---TRAINING MACHINE LEARNING MODELS---")
             # Training for machine learning models
             # Define the features array
             features = [
-                ["rsi", "macd", "macd_signal", "macd_diff", "bollinger_hband", "bollinger_mavg", "bollinger_lband", "ema_20", "atr"],
-                ["rsi", "macd", "macd_signal", "ema_20", "ema_50", "atr"],
-                ["bollinger_mavg", "bollinger_hband", "bollinger_lband", "rsi", "cci", "atr"],
-                ["atr", "bollinger_hband", "bollinger_lband", "adx", "momentum", "ema_50"],
-                ["williams_r", "rsi", "macd", "macd_signal", "bollinger_mavg", "roc"],
-                ["vwap", "ema_50", "ema_200", "adx", "sar", "senkou_span_a"]
+                # 1. Trend-Following Strategy
+                ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],
+                
+                # 2. Volatility Breakout Strategy
+                ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
+                
+                # 3. Momentum Reversal Strategy
+                ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
+                
+                # 4. Momentum + Volatility Strategy
+                ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
+                
+                # 5. Hybrid Strategy
+                ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
+                
+                # 6. Advanced Strategy
+                ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
             ]
             # Iterate over each set of features and train models
             for i, feature_set in enumerate(features):
                 print(f"Training models with feature set {i}: {feature_set}")
-                training_models.train_models(symbol, intervals, feature_set)
+                training_models.train_models('PERP_APT_USDC', intervals, feature_set)
 
         except Exception as e:
             print(f"Error processing data for {symbol}: {e}")
