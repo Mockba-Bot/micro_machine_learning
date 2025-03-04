@@ -1,9 +1,15 @@
 import sys
 import os
 import pandas as pd
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import mutual_info_classif
+from sklearn.utils.class_weight import compute_sample_weight
 from scipy.stats import randint
+from imblearn.over_sampling import SMOTE
+from sklearn.utils.class_weight import compute_sample_weight
 import psycopg2  # Library for PostgreSQL connection
 from dotenv import load_dotenv
 import numpy as np
@@ -36,62 +42,23 @@ BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
 # Add technical indicators to the data
 def add_indicators(data, required_features):
-    """
-    Adds only the technical indicators required by the trained model.
-
-    Parameters:
-        data (pd.DataFrame): The input DataFrame containing price data.
-        required_features (list): List of feature names that the model requires.
-
-    Returns:
-        pd.DataFrame: The DataFrame with the required indicators added.
-    """
-
     # Ensure the columns are of numeric type
     data[['close', 'high', 'low', 'volume']] = data[['close', 'high', 'low', 'volume']].apply(pd.to_numeric)
 
-    # --- Relative Strength Index (RSI) ---
-    if 'rsi' in required_features:
-        delta = data['close'].diff()
-        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-        rs = gain / loss
-        data['rsi'] = 100 - (100 / (1 + rs))
+    # --- EMA ---
+    if 'ema_20' in required_features:
+        data['ema_20'] = data['close'].ewm(span=20, adjust=False).mean()
+    if 'ema_50' in required_features:
+        data['ema_50'] = data['close'].ewm(span=50, adjust=False).mean()
 
-    # --- Moving Average Convergence Divergence (MACD) ---
-    if any(x in required_features for x in ['macd', 'macd_signal', 'macd_diff']):
+    # --- MACD ---
+    if any(x in required_features for x in ['macd', 'macd_signal']):
         data['ema_12'] = data['close'].ewm(span=12, adjust=False).mean()
         data['ema_26'] = data['close'].ewm(span=26, adjust=False).mean()
         data['macd'] = data['ema_12'] - data['ema_26']
         data['macd_signal'] = data['macd'].ewm(span=9, adjust=False).mean()
-        data['macd_diff'] = data['macd'] - data['macd_signal']
 
-    # --- Bollinger Bands ---
-    if any(x in required_features for x in ['bollinger_mavg', 'bollinger_std', 'bollinger_hband', 'bollinger_lband']):
-        data['bollinger_mavg'] = data['close'].rolling(window=20).mean()
-        data['bollinger_std'] = data['close'].rolling(window=20).std()
-        data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
-        data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
-
-    # --- Exponential Moving Averages (EMA) ---
-    for ema in ['ema_20', 'ema_50', 'ema_200']:
-        if ema in required_features:
-            span = int(ema.split('_')[1])
-            data[ema] = data['close'].ewm(span=span, adjust=False).mean()
-
-    # --- Simple Moving Averages (SMA) ---
-    for sma in ['sma_5', 'sma_20', 'sma_50', 'sma_200']:
-        if sma in required_features:
-            window = int(sma.split('_')[1])
-            data[sma] = data['close'].rolling(window=window).mean()
-
-    # --- Stochastic Oscillator ---
-    if any(x in required_features for x in ['stoch_k', 'stoch_d']):
-        data['stoch_k'] = ((data['close'] - data['low'].rolling(14).min()) /
-                           (data['high'].rolling(14).max() - data['low'].rolling(14).min())) * 100
-        data['stoch_d'] = data['stoch_k'].rolling(3).mean()
-
-    # --- Average True Range (ATR) ---
+    # --- ATR ---
     if 'atr' in required_features:
         data['tr'] = pd.concat([
             data['high'] - data['low'],
@@ -100,31 +67,26 @@ def add_indicators(data, required_features):
         ], axis=1).max(axis=1)
         data['atr'] = data['tr'].rolling(window=14).mean()
 
-    # --- VWAP (Volume Weighted Average Price) ---
-    if 'vwap' in required_features:
-        data['vwap'] = (data['volume'] * (data['high'] + data['low'] + data['close']) / 3).cumsum() / data['volume'].cumsum()
+    # --- Bollinger Bands ---
+    if any(x in required_features for x in ['bollinger_hband', 'bollinger_lband']):
+        data['bollinger_mavg'] = data['close'].rolling(window=20).mean()
+        data['bollinger_std'] = data['close'].rolling(window=20).std()
+        data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
+        data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
 
-    # --- ADX (Average Directional Index) ---
-    if 'adx' in required_features:
-        plus_dm = data['high'].diff()
-        minus_dm = data['low'].diff()
-        plus_dm[plus_dm < 0] = 0
-        minus_dm[minus_dm > 0] = 0
-        atr = data['atr'] if 'atr' in data.columns else data['close'].rolling(window=14).mean()
-        plus_di = 100 * (plus_dm.ewm(span=14, adjust=False).mean() / atr)
-        minus_di = abs(100 * (minus_dm.ewm(span=14, adjust=False).mean() / atr))
-        data['adx'] = 100 * abs((plus_di - minus_di) / (plus_di + minus_di)).rolling(14).mean()
+    # --- RSI ---
+    if 'rsi' in required_features:
+        delta = data['close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+        rs = gain / loss
+        data['rsi'] = 100 - (100 / (1 + rs))
 
-    # --- Commodity Channel Index (CCI) ---
-    if 'cci' in required_features:
-        typical_price = (data['high'] + data['low'] + data['close']) / 3
-        mean_deviation = typical_price.rolling(window=20).apply(lambda x: np.mean(np.abs(x - np.mean(x))))
-        data['cci'] = (typical_price - typical_price.rolling(window=20).mean()) / (0.015 * mean_deviation)
-
-    # --- Williams %R (Momentum Indicator) ---
-    if 'williams_r' in required_features:
-        data['williams_r'] = (data['high'].rolling(14).max() - data['close']) / \
-                              (data['high'].rolling(14).max() - data['low'].rolling(14).min()) * -100
+    # --- Stochastic Oscillator ---
+    if any(x in required_features for x in ['stoch_k', 'stoch_d']):
+        data['stoch_k'] = ((data['close'] - data['low'].rolling(14).min()) /
+                           (data['high'].rolling(14).max() - data['low'].rolling(14).min())) * 100
+        data['stoch_d'] = data['stoch_k'].rolling(3).mean()
 
     # --- Momentum Indicator ---
     if 'momentum' in required_features:
@@ -134,7 +96,14 @@ def add_indicators(data, required_features):
     if 'roc' in required_features:
         data['roc'] = data['close'].pct_change(periods=10) * 100
 
-    # --- Parabolic SAR (Stop and Reverse) ---
+    # --- Ichimoku Cloud Components ---
+    if any(x in required_features for x in ['tenkan_sen', 'kijun_sen', 'senkou_span_a', 'senkou_span_b']):
+        data['tenkan_sen'] = (data['high'].rolling(window=9).max() + data['low'].rolling(window=9).min()) / 2
+        data['kijun_sen'] = (data['high'].rolling(window=26).max() + data['low'].rolling(window=26).min()) / 2
+        data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26)
+        data['senkou_span_b'] = ((data['high'].rolling(window=52).max() + data['low'].rolling(window=52).min()) / 2).shift(26)
+
+    # --- Parabolic SAR ---
     if 'sar' in required_features:
         data['sar'] = np.nan
         af = 0.02  # Acceleration Factor
@@ -161,78 +130,158 @@ def add_indicators(data, required_features):
                 af += 0.02
             data.loc[data.index[i], 'sar'] = sar
 
-    # --- Ichimoku Cloud Components ---
-    if any(x in required_features for x in ['tenkan_sen', 'kijun_sen', 'senkou_span_a', 'senkou_span_b', 'chikou_span']):
-        data['tenkan_sen'] = (data['high'].rolling(window=9).max() + data['low'].rolling(window=9).min()) / 2
-        data['kijun_sen'] = (data['high'].rolling(window=26).max() + data['low'].rolling(window=26).min()) / 2
-        data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26)
-        data['senkou_span_b'] = ((data['high'].rolling(window=52).max() + data['low'].rolling(window=52).min()) / 2).shift(26)
-        data['chikou_span'] = data['close'].shift(-26)
+    # --- Average Directional Index (ADX) ---
+    if 'adx' in required_features:
+        data['tr'] = pd.concat([
+            data['high'] - data['low'],
+            (data['high'] - data['close'].shift()).abs(),
+            (data['low'] - data['close'].shift()).abs()
+        ], axis=1).max(axis=1)
+        data['atr'] = data['tr'].rolling(window=14).mean()
+        data['plus_dm'] = np.where((data['high'] - data['high'].shift()) > (data['low'].shift() - data['low']), data['high'] - data['high'].shift(), 0)
+        data['minus_dm'] = np.where((data['low'].shift() - data['low']) > (data['high'] - data['high'].shift()), data['low'].shift() - data['low'], 0)
+        data['plus_di'] = 100 * (data['plus_dm'] / data['atr']).ewm(span=14, adjust=False).mean()
+        data['minus_di'] = 100 * (data['minus_dm'] / data['atr']).ewm(span=14, adjust=False).mean()
+        data['adx'] = 100 * (data['plus_di'] - data['minus_di']).abs() / (data['plus_di'] + data['minus_di'])
+
+    # --- VWAP ---
+    if 'vwap' in required_features:
+        data['vwap'] = (data['volume'] * (data['high'] + data['low'] + data['close']) / 3).cumsum() / data['volume'].cumsum()           
 
     # Fill NaN values after calculations
     data.fillna(method='bfill', inplace=True)
 
     return data
 
+
 # Train the machine learning model with advanced hyperparameter tuning
 def train_model(data, model_path, features):
-    # Calculate return and target columns
-    data['return'] = data['close'].pct_change().shift(-1)
-    data['target'] = (data['return'] > 0).astype(int)
-    
-    # Prepare training and testing datasets
-    X = data[features].dropna()
-    y = data['target'].dropna().loc[X.index]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    # Define hyperparameter search space
+    """
+    Train a Random Forest model with optimized hyperparameters for binary classification (Buy/Hold).
+    """
+
+    # --- 1️⃣ Create Labels (Target) with Upper & Lower Thresholds ---
+    data['return'] = data['close'].pct_change().shift(-1)  # Predicting next period movement
+    upper_threshold = data['return'].quantile(0.75)  # Top 25% → Buy
+    lower_threshold = data['return'].quantile(0.25)  # Bottom 25% → Hold
+
+    data['target'] = np.where(data['return'] > upper_threshold, 1, 0)
+
+    # --- 2️⃣ Handle Missing Values ---
+    data = data.dropna()
+
+    # --- 3️⃣ Prepare Data ---
+    X = data[features]
+    y = data['target']
+
+    # --- 4️⃣ Feature Selection (Mutual Information) ---
+    mi_scores = mutual_info_classif(X, y, random_state=42)
+    mi_df = pd.DataFrame({'Feature': X.columns, 'MI_Score': mi_scores})
+    selected_features = mi_df[mi_df['MI_Score'] > 0.01]['Feature'].tolist()
+    X = X[selected_features]
+
+    # --- 5️⃣ Remove Highly Correlated Features ---
+    correlation_matrix = X.corr().abs()
+    upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
+    high_correlation_features = [column for column in upper_triangle.columns if any(upper_triangle[column] > 0.90)]
+    X = X.drop(columns=high_correlation_features)
+
+    # --- 6️⃣ Normalize Features ---
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # --- 7️⃣ Handle Class Imbalance (Resampling) ---
+    smote = SMOTE(sampling_strategy='auto', random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X_scaled, y)
+
+    # --- 8️⃣ Compute Sample Weights *AFTER* Resampling ---
+    sample_weights = compute_sample_weight(class_weight="balanced", y=y_resampled)
+
+    # --- 9️⃣ StratifiedKFold Cross-Validation ---
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+    # --- 🔟 Define Hyperparameter Space ---
     param_distributions = {
-        'n_estimators': randint(100, 500),
-        'max_depth': randint(10, 80),
-        'min_samples_split': randint(2, 20),
-        'min_samples_leaf': randint(1, 20),
-        'max_features': ['sqrt', 'log2']
+        'n_estimators': randint(500, 1500),  
+        'max_depth': randint(20, 100),  
+        'min_samples_split': randint(5, 20),  
+        'min_samples_leaf': randint(2, 10),  
+        'max_features': ['sqrt', 'log2'],
+        'class_weight': ['balanced', 'balanced_subsample'],
     }
-    
-    # Perform randomized hyperparameter search
+
     randomized_search = RandomizedSearchCV(
         RandomForestClassifier(random_state=42), 
         param_distributions, 
-        n_iter=300,  # Increased number of iterations
-        cv=3, 
-        scoring='accuracy', 
+        n_iter=100,
+        cv=skf,  
+        scoring='roc_auc',  
         random_state=42,
         n_jobs=cpu_count
     )
-    randomized_search.fit(X_train, y_train)
-    
-    # Get the best model from the search
+
+    randomized_search.fit(X_resampled, y_resampled, sample_weight=sample_weights)
+
+    # --- 1️⃣1️⃣ Get the Best Model ---
     best_model = randomized_search.best_estimator_
 
-    # Save the trained model to disk
+    # --- 1️⃣2️⃣ Evaluate Performance ---
+    y_pred = best_model.predict(X_resampled)
+    y_pred_proba = best_model.predict_proba(X_resampled)[:, 1]
+
+    print(f"Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    print(f"Precision: {precision_score(y_resampled, y_pred):.4f}")
+    print(f"Recall: {recall_score(y_resampled, y_pred):.4f}")
+    print(f"F1-Score: {f1_score(y_resampled, y_pred):.4f}")
+    print(f"ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba):.4f}")
+
+    # --- 1️⃣3️⃣ Save the Model ---
     joblib.dump(best_model, model_path)
+    print(f"✅ Model trained and saved to {model_path}")
 
 
 # Update the existing model with new data
 def update_model(existing_model, new_data, features):
     """
-    Update the existing model with new data using the `warm_start` approach.
+    Update the existing Random Forest model with new data using the `warm_start` approach.
     """
-    # Calculate return and target columns
-    new_data['return'] = new_data['close'].pct_change().shift(-1)
-    new_data['target'] = (new_data['return'] > 0).astype(int)
-
-    # Prepare the dataset
-    X_new = new_data[features].dropna()
-    y_new = new_data['target'].dropna().loc[X_new.index]
-
-    # Ensure `existing_model` is a RandomForestClassifier
-    if isinstance(existing_model, RandomForestClassifier):
-        existing_model.n_estimators += 50  # Add 50 new trees instead of retraining
-        existing_model.set_params(warm_start=True)
-        existing_model.fit(X_new, y_new)
-    else:
+    if not isinstance(existing_model, RandomForestClassifier):
         raise ValueError("Expected a RandomForestClassifier model for incremental training")
+
+    # --- 1️⃣ Calculate Return & Define Target ---
+    new_data['return'] = new_data['close'].pct_change().shift(-1)
+    upper_threshold = new_data['return'].quantile(0.75)
+    lower_threshold = new_data['return'].quantile(0.25)
+    new_data['target'] = np.where(new_data['return'] > upper_threshold, 1, 0)  # Buy = 1, Hold = 0
+
+    # --- 2️⃣ Handle Missing Values ---
+    new_data = new_data.dropna()
+
+    # --- 3️⃣ Prepare Dataset ---
+    X_new = new_data[features]
+    y_new = new_data['target']
+
+    # --- 4️⃣ Feature Selection (Mutual Information) ---
+    mi_scores = mutual_info_classif(X_new, y_new, random_state=42)
+    mi_df = pd.DataFrame({'Feature': X_new.columns, 'MI_Score': mi_scores})
+    selected_features = mi_df[mi_df['MI_Score'] > 0.01]['Feature'].tolist()
+    X_new = X_new[selected_features]
+
+    # --- 5️⃣ Normalize Features ---
+    scaler = StandardScaler()
+    X_new_scaled = scaler.fit_transform(X_new)
+
+    # --- 6️⃣ Handle Class Imbalance (SMOTE) ---
+    smote = SMOTE(sampling_strategy='auto', random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X_new_scaled, y_new)
+
+    # --- 7️⃣ Compute Sample Weights *After* Resampling ---
+    sample_weights = compute_sample_weight(class_weight="balanced", y=y_resampled)
+
+    # --- 8️⃣ Update Model with New Data (Warm Start) ---
+    existing_model.set_params(warm_start=True)  # Enable incremental learning
+    existing_model.n_estimators += 50  # Add 50 new trees
+    existing_model.fit(X_resampled, y_resampled, sample_weight=sample_weights)
 
     return existing_model
 
@@ -285,54 +334,47 @@ def train_models(symbol, intervals, features):
     for interval in intervals:
         train_machine_learning(symbol, interval, features)
 
-# Trend-following + volatility breakout strategy, Best for swing trading or momentum-based scalping
-features =  ["rsi", "macd", "macd_signal", "macd_diff", "bollinger_hband", "bollinger_mavg", "bollinger_lband", "ema_20", "atr"]
+# 1. Trend-Following Strategy
+#     ema_20, ema_50, macd, macd_signal, adx
+# 2. Volatility Breakout Strategy
+#     atr, bollinger_hband, bollinger_lband, std_20
+# 3. Momentum Reversal Strategy
+#     rsi, stoch_k, stoch_d, roc, momentum
+# 4. Momentum + Volatility Strategy
+#     rsi, atr, bollinger_hband, bollinger_lband, roc, momentum
+# 5. Hybrid Strategy
+#     ema_20, ema_50, atr, bollinger_hband, rsi, macd
+# 6. Advanced Strategy
+#     tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b, sar
 
-# Momentum & Trend Following Strategy, Best for: Trend-following strategies, swing trading.
-# "rsi" → Detects overbought/oversold conditions
-# "macd" → Measures trend strength
-# "macd_signal" → Helps identify buy/sell signals
-# "ema_20" → Short-term trend filter
-# "ema_50" → Medium-term trend confirmation
-# "atr" → Measures volatility for stop-loss placement
-features = ["rsi", "macd", "macd_signal", "ema_20", "ema_50", "atr"]  
 
-# Mean Reversion Strategy, Best for: Buying dips, selling peaks.    
-# "bollinger_mavg" → Identifies mean price
-# "bollinger_hband" → Upper resistance level
-# "bollinger_lband" → Lower support level
-# "rsi" → Confirms oversold/overbought conditions
-# "cci" → Measures price deviation from mean
-# "atr" → Identifies breakout volatility 
-features = ["bollinger_mavg", "bollinger_hband", "bollinger_lband", "rsi", "cci", "atr"]
+if __name__ == "__main__":
+    features = [
+        # 1. Trend-Following Strategy
+        ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],
+        
+        # 2. Volatility Breakout Strategy
+        ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
+        
+        # 3. Momentum Reversal Strategy
+        ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
+        
+        # 4. Momentum + Volatility Strategy
+        ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
+        
+        # 5. Hybrid Strategy
+        ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
+        
+        # 6. Advanced Strategy
+        ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+    ]
+    # features = [
+    #     # 1. Trend-Following Strategy
+    #     ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"]
+    # ]
+    intervals = ["1h"]
 
-# Volatility Breakout Strategy, Best for: Trading strong moves in volatile markets.
-# "atr" → Measures breakout strength
-# "bollinger_hband" → Breakout confirmation
-# "bollinger_lband" → Breakdown confirmation
-# "adx" → Measures trend strength
-# "momentum" → Confirms breakout momentum
-# "ema_50" → Medium-term trend confirmation
-features = ["atr", "bollinger_hband", "bollinger_lband", "adx", "momentum", "ema_50"]
-
-# Reversal Detection Strategy, Best for: Catching market tops/bottoms.
-# "williams_r" → Identifies reversal points
-# "rsi" → Confirms overbought/oversold conditions
-# "macd" → Checks trend direction
-# "macd_signal" → Identifies crossovers
-# "bollinger_mavg" → Defines fair price range
-# "roc" → Measures price acceleration
-features = ["williams", "rsi", "macd", "macd_signal", "bollinger_mavg", "roc"]
-
-#  Institutional Strategy (Advanced), Best for: Large volume traders, institutions.
-# "vwap" → Confirms institutional price levels
-# "ema_50" → Identifies trend direction
-# "ema_200" → Long-term trend filter
-# "adx" → Confirms trend strength
-# "sar" → Provides stop/reversal points
-# "senkou_span_a" → Ichimoku support/resistance
-features = ["vwap", "ema_50", "ema_200", "adx", "sar", "senkou_span_a"]
-
-# if __name__ == "__main__":
-#     intervals = ["1h", "4h", "1d"]
-#     train_models('PERP_APT_USDC', intervals, features)
+    # Iterate over each set of features and train models
+    for i, feature_set in enumerate(features):
+        print(f"Training models with feature set {i}: {feature_set}")
+        train_models('PERP_APT_USDC', intervals, feature_set)

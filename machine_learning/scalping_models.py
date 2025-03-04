@@ -1,12 +1,13 @@
 import sys
 import os
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingRegressor, RandomForestRegressor
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from scipy.stats import randint
 import psycopg2  # Library for PostgreSQL connection
 from dotenv import load_dotenv
+import numpy as np
 import joblib  # Library for model serialization
 from datetime import datetime, timedelta  # Import timedelta from datetime
 from sqlalchemy import text
@@ -34,464 +35,199 @@ cpu_count = os.cpu_count()-int(CPU_COUNT)
 BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
 
-# Function to calculate technical indicators
-def calculate_indicators(df):
-    """Calculate technical indicators for the given DataFrame without using TA-Lib."""
-    
-    # Create a copy of the DataFrame to avoid SettingWithCopyWarning
-    df = df.copy()
-    
-    # Fixing the conversion of 'high', 'low', and 'close' columns to numeric
-    df['high'] = pd.to_numeric(df['high'], errors='coerce')
-    df['low'] = pd.to_numeric(df['low'], errors='coerce')
-    df['close'] = pd.to_numeric(df['close'], errors='coerce')
-    
-    # RSI (Relative Strength Index) - 5-period
-    delta = df['close'].diff()
-    gain = np.where(delta > 0, delta, 0)
-    loss = np.where(delta < 0, -delta, 0)
-    avg_gain = pd.Series(gain).rolling(window=5, min_periods=1).mean()
-    avg_loss = pd.Series(loss).rolling(window=5, min_periods=1).mean()
-    rs = avg_gain / (avg_loss + 1e-10)  # Adding small value to avoid division by zero
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # MACD (Moving Average Convergence Divergence)
-    short_ema = df['close'].ewm(span=12, adjust=False).mean()
-    long_ema = df['close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = short_ema - long_ema
-    df['MACD_signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_hist'] = df['MACD'] - df['MACD_signal']
-    
-    # Exponential Moving Average (EMA)
-    df['EMA5'] = df['close'].ewm(span=5, adjust=False).mean()
-    
-    # Average True Range (ATR) - Volatility indicator
-    high_low = df['high'] - df['low']
-    high_close = np.abs(df['high'] - df['close'].shift())
-    low_close = np.abs(df['low'] - df['close'].shift())
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    df['ATR'] = tr.rolling(window=10, min_periods=1).mean()
-    
-    # Momentum indicator (14-period)
-    df['Momentum'] = df['close'].diff(periods=14)
-    
-    # Volume (if available)
-    if 'volume' in df.columns:
-        df['Volume'] = df['volume']  # Ensure the volume column is there
-    
-    # Fixing the removal of rows with NaN values
-    df.dropna(inplace=True)
-    
-    return df
+# Add technical indicators to the data
+ddef add_indicators(data, required_features):
+    # Ensure the columns are of numeric type
+    data[['close', 'high', 'low', 'volume']] = data[['close', 'high', 'low', 'volume']].apply(pd.to_numeric)
+
+    # --- Short-Term Moving Averages ---
+    if 'ema_5' in required_features:
+        data['ema_5'] = data['close'].ewm(span=5, adjust=False).mean()
+    if 'ema_10' in required_features:
+        data['ema_10'] = data['close'].ewm(span=10, adjust=False).mean()
+
+    # --- Momentum Indicators ---
+    if 'rsi_14' in required_features:
+        delta = data['close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+        rs = gain / loss
+        data['rsi_14'] = 100 - (100 / (1 + rs))
+
+    if any(x in required_features for x in ['stoch_k', 'stoch_d']):
+        data['stoch_k'] = ((data['close'] - data['low'].rolling(14).min()) /
+                           (data['high'].rolling(14).max() - data['low'].rolling(14).min())) * 100
+        data['stoch_d'] = data['stoch_k'].rolling(3).mean()
+
+    # --- Volatility Indicators ---
+    if 'atr_14' in required_features:
+        data['tr'] = pd.concat([
+            data['high'] - data['low'],
+            (data['high'] - data['close'].shift()).abs(),
+            (data['low'] - data['close'].shift()).abs()
+        ], axis=1).max(axis=1)
+        data['atr_14'] = data['tr'].rolling(window=14).mean()
+
+    if any(x in required_features for x in ['bollinger_hband', 'bollinger_lband']):
+        data['bollinger_mavg'] = data['close'].rolling(window=20).mean()
+        data['bollinger_std'] = data['close'].rolling(window=20).std()
+        data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
+        data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
+
+    # --- Volume-Based Indicators ---
+    if 'volume_ma_10' in required_features:
+        data['volume_ma_10'] = data['volume'].rolling(window=10).mean()
+    if 'volume_delta' in required_features:
+        data['volume_delta'] = data['volume'].diff()
+
+    # --- Price Action Features ---
+    if 'price_change_5' in required_features:
+        data['price_change_5'] = data['close'].pct_change(periods=5) * 100
+    if 'high_low_diff' in required_features:
+        data['high_low_diff'] = data['high'] - data['low']
+
+    # Fill NaN values after calculations
+    data.fillna(method='bfill', inplace=True)
+
+    return data
 
 
-# Train a model for dynamic profit target prediction based on ATR and other features
-def train_profit_target_model(df, model_path, profit_target_from, profit_target_to):
-
-    df = calculate_indicators(df)  # Ensure the technical indicators are calculated
-
-    # Feature selection for the profit target model
-    X = df[['RSI', 'MACD', 'MACD_signal', 'Momentum', 'ATR', 'EMA5']].values
-
-    # Create target (profit target) based on past gains (simulated for this purpose)
-    y = np.clip(np.abs(df['close'].pct_change().shift(-1)) * 100, profit_target_from, profit_target_to)
-
-    # Drop the last row from X to match the length of y
-    X = X[:-1]
-    y = y[:-1]
-
-    # Train-test split
+# Train the machine learning model with advanced hyperparameter tuning
+def train_model(data, model_path, features):
+    # Calculate return and target columns
+    data['return'] = data['close'].pct_change().shift(1)  # Avoid look-ahead bias
+    data['target'] = (data['return'] > 0).astype(int)  # Binary classification target
+    
+    # Handle missing values
+    data = data.dropna()
+    
+    # Prepare training and testing datasets
+    X = data[features]
+    y = data['target']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Optimized RandomForestRegressor setup
-    model = RandomForestRegressor(
-        n_estimators=100,  # Increased for better accuracy within available resources
-        max_depth=cpu_count,       # Balanced depth for efficiency
-        random_state=42,
-        n_jobs=cpu_count           # Use 6 cores for parallel processing
-    )
-
-    model.fit(X_train, y_train)
-
-    # Save the trained model to disk
-    joblib.dump(model, model_path) 
-
-# Update the existing model with new data if exists
-def update_profit_target_model(existing_model, df, profit_target_from, profit_target_to):
-    # Ensure the technical indicators are calculated
-    df = calculate_indicators(df)
-
-    # Feature selection for the profit target model
-    X = df[['RSI', 'MACD', 'MACD_signal', 'Momentum', 'ATR', 'EMA5']].values
-
-    # Create target (profit target) based on past gains (simulated for this purpose)
-    y = np.clip(np.abs(df['close'].pct_change().shift(-1)) * 100, profit_target_from, profit_target_to)
-
-    # Drop the last row from X to match the length of y
-    X = X[:-1]
-    y = y[:-1]
-
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Get the number of CPU cores
-    num_cores = cpu_count
-
-    # Update the existing model with new data
-    existing_model.set_params(
-        warm_start=True,  # Enable warm_start to add more trees
-        n_estimators=existing_model.n_estimators + 10,  # Add 10 more trees (adjust as needed)
-        max_depth=num_cores,  # Set max_depth based on CPU cores (optional, but not recommended)
-        n_jobs=num_cores - 1  # Use all but one core for parallel processing
-    )
-
-    # Retrain the model on the new data
-    existing_model.fit(X_train, y_train)
-
-    return existing_model
-
-# Function to train a machine learning model
-def train_model(df, model_path):
-    df = df.dropna()  # Drop rows with NaN values from indicators
-    # Define features and target
-    X = df[['RSI', 'MACD', 'MACD_signal', 'Volume', 'Momentum']]
-    y = np.where((df['close'].shift(-1) - df['close']) > 0, 1, 0)  # Binary target column
-
-    # Align X and y lengths (both must have the same number of samples)
-    X = X[:-1]
-    y = y[:-1]
-
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Hyperparameter tuning grid
-    param_grid = {
-        'n_estimators': [50, 100, 200],       # Adjusted for accuracy and resources
-        'max_depth': [5, 10, 15],            # Increased range for depth
-        'min_samples_split': [2, 5, 10],     # Ensure flexibility for splits
-        'min_samples_leaf': [1, 2, 4],       # Regularization through leaf size
+    
+    # Define hyperparameter search space
+    param_distributions = {
+        'n_estimators': randint(100, 500),
+        'max_depth': randint(10, 80),
+        'min_samples_split': randint(2, 20),
+        'min_samples_leaf': randint(1, 20),
+        'max_features': ['sqrt', 'log2']
     }
+    
+    # Perform randomized hyperparameter search
+    randomized_search = RandomizedSearchCV(
+        RandomForestClassifier(random_state=42), 
+        param_distributions, 
+        n_iter=300,  # Increased number of iterations
+        cv=5,  # Increased number of cross-validation folds
+        scoring='roc_auc',  # Use ROC-AUC for imbalanced datasets
+        random_state=42,
+        n_jobs=cpu_count  # Use all available CPU cores
+    )
+    randomized_search.fit(X_train, y_train)
+    
+    # Get the best model from the search
+    best_model = randomized_search.best_estimator_
 
-    # GridSearch with RandomForestClassifier
-    model = RandomForestClassifier(random_state=42)
-    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, n_jobs=cpu_count, verbose=1)
-    grid_search.fit(X_train, y_train)
+    # Evaluate the model
+    y_pred = best_model.predict(X_test)
+    y_pred_proba = best_model.predict_proba(X_test)[:, 1]  # Probabilities for ROC-AUC
 
-    # Retrieve the best model
-    best_model = grid_search.best_estimator_
-
+    print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print(f"Precision: {precision_score(y_test, y_pred):.4f}")
+    print(f"Recall: {recall_score(y_test, y_pred):.4f}")
+    print(f"F1-Score: {f1_score(y_test, y_pred):.4f}")
+    print(f"ROC-AUC: {roc_auc_score(y_test, y_pred_proba):.4f}")
+    
     # Save the trained model to disk
     joblib.dump(best_model, model_path)
 
-# Function to update an existing model with new data
-def update_model(existing_model, df):
+
+# Update the existing model with new data
+def update_model(existing_model, new_data, features):
     """
-    Update an existing RandomForestClassifier model with new data.
-    
-    Parameters:
-        existing_model (RandomForestClassifier): The existing model to update.
-        df (pd.DataFrame): The DataFrame containing the new data.
-    
-    Returns:
-        RandomForestClassifier: The updated model.
+    Update the existing model with new data using the `warm_start` approach.
     """
-    df = df.dropna()  # Drop rows with NaN values from indicators
+    # Calculate return and target columns
+    new_data['return'] = new_data['close'].pct_change().shift(-1)
+    new_data['target'] = (new_data['return'] > 0).astype(int)
 
-    # Define features and target
-    X = df[['RSI', 'MACD', 'MACD_signal', 'Volume', 'Momentum']]
-    y = np.where((df['close'].shift(-1) - df['close']) > 0, 1, 0)  # Binary target column
+    # Prepare the dataset
+    X_new = new_data[features].dropna()
+    y_new = new_data['target'].dropna().loc[X_new.index]
 
-    # Align X and y lengths (both must have the same number of samples)
-    X = X[:-1]
-    y = y[:-1]
+    # Ensure `existing_model` is a RandomForestClassifier
+    if isinstance(existing_model, RandomForestClassifier):
+        existing_model.n_estimators += 50  # Add 50 new trees instead of retraining
+        existing_model.set_params(warm_start=True)
+        existing_model.fit(X_new, y_new)
+    else:
+        raise ValueError("Expected a RandomForestClassifier model for incremental training")
 
-    # Train-test split (optional, if you want to evaluate the updated model)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Get the number of CPU cores
-    num_cores = cpu_count
-
-    # Enable warm_start to add more trees
-    existing_model.set_params(
-        warm_start=True,  # Enable incremental training
-        n_estimators=existing_model.n_estimators + 50,  # Add 50 more trees (adjust as needed)
-        n_jobs=cpu_count  # Use all but one CPU core for parallel processing
-    )
-
-    # Retrain the model on the new data
-    existing_model.fit(X_train, y_train)
+    return existing_model
 
 
-# Train partial exit threshold model
-def train_partial_exit_threshold_model(df, model_path, partial_exit_threshold_from, partial_exit_threshold_to):
-    df = calculate_indicators(df)  # Ensure technical indicators are calculated
-
-    # Feature selection for the partial exit threshold model
-    X = df[['ATR', 'RSI']].values
-
-    # Target for partial exit threshold
-    y = np.clip(np.abs(df['close'].pct_change().shift(-1)) * 100, partial_exit_threshold_from, partial_exit_threshold_to)
-
-    # Drop the last row from X and y to align their lengths
-    X = X[:-1]
-    y = y[:-1]
-
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Optimized RandomForestRegressor setup
-    model = RandomForestRegressor(
-        n_estimators=100,  # Increased estimators for better accuracy
-        max_depth=6,       # Depth optimized for available CPUs
-        random_state=42,
-        n_jobs=cpu_count           # Use 6 cores for parallel processing
-    )
-
-    model.fit(X_train, y_train)
-
-    # Save the trained model to disk
-    joblib.dump(model, model_path)
-
-# Update partial exit threshold model
-def update_partial_exit_threshold_model(existing_model, df, partial_exit_threshold_from, partial_exit_threshold_to):
-    """
-    Update an existing RandomForestRegressor model with new data for partial exit threshold prediction.
-    
-    Parameters:
-        existing_model (RandomForestRegressor): The existing model to update.
-        df (pd.DataFrame): The DataFrame containing the new data.
-        partial_exit_threshold_from (float): The lower bound for the partial exit threshold.
-        partial_exit_threshold_to (float): The upper bound for the partial exit threshold.
-    
-    Returns:
-        RandomForestRegressor: The updated model.
-    """
-    df = calculate_indicators(df)  # Ensure technical indicators are calculated
-
-    # Feature selection for the partial exit threshold model
-    X = df[['ATR', 'RSI']].values
-
-    # Target for partial exit threshold
-    y = np.clip(np.abs(df['close'].pct_change().shift(-1)) * 100, partial_exit_threshold_from, partial_exit_threshold_to)
-
-    # Drop the last row from X and y to align their lengths
-    X = X[:-1]
-    y = y[:-1]
-
-    # Train-test split (optional, if you want to evaluate the updated model)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Get the number of CPU cores
-    num_cores = cpu_count
-
-    # Enable warm_start to add more trees
-    existing_model.set_params(
-        warm_start=True,  # Enable incremental training
-        n_estimators=existing_model.n_estimators + 50,  # Add 50 more trees (adjust as needed)
-        n_jobs=num_cores - 1  # Use all but one CPU core for parallel processing
-    )
-
-    # Retrain the model on the new data
-    existing_model.fit(X_train, y_train)
-
-
-# Train exit remaining percentage model
-def train_exit_remaining_percentage_model(df, model_path, exit_remaining_percentage_from, exit_remaining_percentage_to):
-    df = calculate_indicators(df)  # Ensure technical indicators are calculated
-
-    # Feature selection for the exit remaining percentage model
-    X = df[['MACD', 'MACD_signal', 'EMA5', 'RSI', 'Momentum', 'ATR', 'Volume']].values
-
-    # Adjusted target calculation with a look-ahead window for multi-period change
-    look_ahead_period = 5
-    y = np.clip(np.abs(df['close'].pct_change(periods=look_ahead_period).shift(-look_ahead_period)) * 100, exit_remaining_percentage_from, exit_remaining_percentage_to)
-
-    # Drop the last row from X and y to align their lengths
-    X = X[:-look_ahead_period]
-    y = y[:-look_ahead_period]
-
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Optimized Gradient Boosting setup
-    model = GradientBoostingRegressor(
-        n_estimators=100,   # Increased for smoother predictions
-        learning_rate=0.05, # Adjusted for better convergence
-        max_depth=cpu_count,        # Balanced depth for available CPUs
-        random_state=42
-    )
-
-    model.fit(X_train, y_train)
-
-    # Save the trained model to disk
-    joblib.dump(model, model_path)
-
-    
-
-# Update exit remaining percentage model
-def update_exit_remaining_percentage_model(existing_model, df, exit_remaining_percentage_from, exit_remaining_percentage_to):
-    """
-    Update an existing GradientBoostingRegressor model with new data for exit remaining percentage prediction.
-    
-    Parameters:
-        existing_model (GradientBoostingRegressor): The existing model to update.
-        df (pd.DataFrame): The DataFrame containing the new data.
-        exit_remaining_percentage_from (float): The lower bound for the exit remaining percentage.
-        exit_remaining_percentage_to (float): The upper bound for the exit remaining percentage.
-    
-    Returns:
-        GradientBoostingRegressor: The updated model.
-    """
-    df = calculate_indicators(df)  # Ensure technical indicators are calculated
-
-    # Feature selection for the exit remaining percentage model
-    X = df[['MACD', 'MACD_signal', 'EMA5', 'RSI', 'Momentum', 'ATR', 'Volume']].values
-
-    # Adjusted target calculation with a look-ahead window for multi-period change
-    look_ahead_period = 5
-    y = np.clip(np.abs(df['close'].pct_change(periods=look_ahead_period).shift(-look_ahead_period)) * 100, exit_remaining_percentage_from, exit_remaining_percentage_to)
-
-    # Drop the last row from X and y to align their lengths
-    X = X[:-look_ahead_period]
-    y = y[:-look_ahead_period]
-
-    # Train-test split (optional, if you want to evaluate the updated model)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Get the number of CPU cores
-    num_cores = cpu_count
-
-    # Enable warm_start to add more trees
-    existing_model.set_params(
-        warm_start=True,  # Enable incremental training
-        n_estimators=existing_model.n_estimators + 50,  # Add 50 more trees (adjust as needed)
-        max_depth=num_cores,  # Set max_depth based on CPU cores (optional, but not recommended)
-        random_state=42
-    )
-
-    # Retrain the model on the new data
-    existing_model.fit(X_train, y_train)
-
-# Train the machine learning models for all currency pairs and timeframes
-def train_scalping_models(token, pair, timeframe, stop_loss_percentage, profit_target_from
-    , profit_target_to, partial_exit_threshold_from, partial_exit_threshold_to
-    , exit_remaining_percentage_from, exit_remaining_percentage_to, partial_exit_amount
-):
-    MODEL_KEY_TRAINED = f'Mockba/scalping_models/{pair}_{timeframe}_trading_model.joblib'
-    local_model_path_training = f'temp/{pair}_{timeframe}_trading_model.joblib'
-
-    MODEL_KEY_EXIT_REMAINING = f'Mockba/scalping_models/{pair}_{timeframe}_exit_remaining_percentage_model.joblib'
-    local_model_path_exit_remaining = f'temp/{pair}_{timeframe}_exit_remaining_percentage_model.joblib'
-
-    MODEL_KEY_PARCIAL_EXIT = f'Mockba/scalping_models/{pair}_{timeframe}_partial_exit_threshold_model.joblib'
-    local_model_path_parcial_exit = f'temp/{pair}_{timeframe}_partial_exit_threshold_model.joblib'
-
-    MODEL_KEY_PROFIT_TARGET = f'Mockba/scalping_models/{pair}_{timeframe}_profit_target_model.joblib'
-    local_model_path_profit_target = f'temp/{pair}_{timeframe}_profit_target_model.joblib'
+# Train the machine learning model with advanced hyperparameter tuning
+def train_machine_learning(pair, timeframe, features=None):
+    model = "_".join(features).replace("[", "").replace("]", "").replace("'", "_").replace(" ", "")
+    MODEL_KEY = f'Mockba/scalping_models/scalping_model_{pair}_{timeframe}_{model}.pkl'
+    local_model_path = f'temp/scalping_model_{pair}_{timeframe}_{model}.pkl'
 
     # Get the current date
     now = datetime.now()
     current_date = now.strftime('%Y-%m-%d')
-    values = f'2024-11-01|{current_date}'
-    # Get the historical data for the pair and timeframe
+    values = f'2024-01-01|{current_date}'
+
+    # Get historical data
     data = get_historical_data(pair, timeframe, values)
-    data = calculate_indicators(data)
-    # Check if the model exists in DigitalOcean Spaces
-    if download_model(BUCKET_NAME, MODEL_KEY_TRAINED, local_model_path_training):
-        # Load the existing model
+
+    # Add technical indicators
+    data = add_indicators(data, features)
+
+    # Automatically determine the feature columns (Exclude non-numeric ones)
+    exclude_columns = ['start_timestamp']
+    features = [col for col in data.columns if col not in exclude_columns]
+
+    # Check if the model exists in storage
+    if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
+        # Load existing model
         print("Loaded existing model.")
-        model = joblib.load(local_model_path_training)
-        features = ['rsi', 'macd', 'macd_signal', 'volume', 'Momentum']
-        update_model(model, data)
-        upload_model(BUCKET_NAME, MODEL_KEY_TRAINED, local_model_path_training)
+        model = joblib.load(local_model_path)
+        update_model(model, data, features)
+        upload_model(BUCKET_NAME, MODEL_KEY, local_model_path)
     else:
-        # Train a new model if it doesn't exist
+        # Train a new model if none exists
         print("No existing model found. Training a new model.")
-        train_model(data, local_model_path_training)
-        upload_model(BUCKET_NAME, MODEL_KEY_TRAINED, local_model_path_training)
+        train_model(data, local_model_path, features)
+        upload_model(BUCKET_NAME, MODEL_KEY, local_model_path)
 
-    print("Train Model Exit remaining")
-    # Check if the model exists in DigitalOcean Spaces
-    if download_model(BUCKET_NAME, MODEL_KEY_EXIT_REMAINING, local_model_path_exit_remaining):
-        # Load the existing model
-        print("Loaded existing model.")
-        model = joblib.load(local_model_path_exit_remaining)
-        features = ['rsi', 'macd', 'macd_signal', 'volume', 'Momentum', 'ATR', 'EMA5']
-        update_exit_remaining_percentage_model(model, data, exit_remaining_percentage_from, exit_remaining_percentage_to)
-        upload_model(BUCKET_NAME, MODEL_KEY_EXIT_REMAINING, local_model_path_exit_remaining)
+    # Delete local model file after upload
+    if os.path.exists(local_model_path):
+        os.remove(local_model_path)
     else:
-        # Train a new model if it doesn't exist
-        print("No existing model found. Training a new model.")
-        train_exit_remaining_percentage_model(data, local_model_path_exit_remaining, exit_remaining_percentage_from, exit_remaining_percentage_to)
-        upload_model(BUCKET_NAME, MODEL_KEY_EXIT_REMAINING, local_model_path_exit_remaining)    
+        print(f"Local file {local_model_path} does not exist.")
 
-    print("Train Model Partial Exit")
-    # Check if the model exists in DigitalOcean Spaces
-    if download_model(BUCKET_NAME, MODEL_KEY_PARCIAL_EXIT, local_model_path_parcial_exit):
-        # Load the existing model
-        print("Loaded existing model.")
-        model = joblib.load(local_model_path_parcial_exit)
-        features = ['ATR', 'rsi']
-        update_partial_exit_threshold_model(model, data, partial_exit_threshold_from, partial_exit_threshold_to)
-        upload_model(BUCKET_NAME, MODEL_KEY_PARCIAL_EXIT, local_model_path_parcial_exit)
-    else:
-        # Train a new model if it doesn't exist
-        print("No existing model found. Training a new model.")
-        train_partial_exit_threshold_model(data, local_model_path_parcial_exit, partial_exit_threshold_from, partial_exit_threshold_to)
-        upload_model(BUCKET_NAME, MODEL_KEY_PARCIAL_EXIT, local_model_path_parcial_exit) 
-
-    print("Train Model Profit Target")
-    # Check if the model exists in DigitalOcean Spaces
-    if download_model(BUCKET_NAME, MODEL_KEY_PROFIT_TARGET, local_model_path_profit_target):
-        # Load the existing model
-        print("Loaded existing model.")
-        model = joblib.load(local_model_path_profit_target)
-        features = ['rsi', 'macd', 'macd_signal', 'Momentum', 'ATR', 'EMA5']
-        update_profit_target_model(model, data, profit_target_from, profit_target_to)
-        upload_model(BUCKET_NAME, MODEL_KEY_PROFIT_TARGET, local_model_path_profit_target)
-    else:
-        # Train a new model if it doesn't exist
-        print("No existing model found. Training a new model.")
-        train_profit_target_model(data, local_model_path_profit_target, profit_target_from, profit_target_to)
-        upload_model(BUCKET_NAME, MODEL_KEY_PROFIT_TARGET, local_model_path_profit_target)            
-
-    # Delete the local file after uploading
-    if os.path.exists(local_model_path_training):
-        os.remove(local_model_path_training)
-    else:
-        print(f"Local file {local_model_path_training} does not exist.")
-
-    # Delete the local file after uploading  
-    if os.path.exists(local_model_path_exit_remaining):
-        os.remove(local_model_path_exit_remaining)
-    else:  
-        print(f"Local file {local_model_path_exit_remaining} does not exist.")
-
-    # Delete the local file after uploading
-    if os.path.exists(local_model_path_parcial_exit):
-        os.remove(local_model_path_parcial_exit)
-    else:
-        print(f"Local file {local_model_path_parcial_exit} does not exist.")
-
-    # Delete the local file after uploading
-    if os.path.exists(local_model_path_profit_target):
-        os.remove(local_model_path_profit_target)
-    else:
-        print(f"Local file {local_model_path_profit_target} does not exist.")                        
+    print("✅ Model training complete.")    
 
 
-# if __name__ == "__main__":
-#     stop_loss_percentage = 0.5 # 50% stop loss
-#     profit_target_from = 0.1 # 1% profit target
-#     profit_target_to = 0.3 # 3% profit target
-#     partial_exit_threshold_from = 25.0 # 25% partial exit threshold
-#     partial_exit_threshold_to = 30.0 # 30% partial exit threshold
-#     exit_remaining_percentage_from = 15.0 # 15% exit remaining percentage
-#     exit_remaining_percentage_to = 20.0 # 20% exit remaining percentage
-#     partial_exit_amount = 0.15 # 15% partial exit amount
+# Main function to train or update models for multiple intervals
+def train_models(symbol, intervals, features):
+    for interval in intervals:
+        train_machine_learning(symbol, interval, features)
 
-#     train_scalping_models('000000', 'APTUSDT', '5m'
-#     , stop_loss_percentage, profit_target_from, profit_target_to
-#     , partial_exit_threshold_from, partial_exit_threshold_to
-#     , exit_remaining_percentage_from
-#     , exit_remaining_percentage_to, partial_exit_amount)
+
+if __name__ == "__main__":
+    scalping_features = [
+        "ema_5", "ema_10",  # Short-term moving averages
+        "rsi_14", "stoch_k", "stoch_d",  # Momentum indicators
+        "atr_14", "bollinger_hband", "bollinger_lband",  # Volatility indicators
+        "volume_ma_10", "volume_delta",  # Volume-based indicators
+        "price_change_5", "high_low_diff"  # Price action features
+    ]
+    intervals = ["5m"]
+
+    # Iterate over each set of features and train models
+    for i, feature_set in enumerate(scalping_features):
+        print(f"Training models with feature set {i}: {feature_set}")
+        train_models('PERP_APT_USDC', intervals, feature_set)
