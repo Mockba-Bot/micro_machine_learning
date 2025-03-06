@@ -240,50 +240,68 @@ def train_model(data, model_path, features):
 
 
 # Update the existing model with new data
-def update_model(existing_model, new_data, features):
+def update_model(model_path, new_data, features):
     """
-    Update the existing Random Forest model with new data using the `warm_start` approach.
+    Update an existing Random Forest model with new data using incremental learning (warm start).
     """
-    if not isinstance(existing_model, RandomForestClassifier):
-        raise ValueError("Expected a RandomForestClassifier model for incremental training")
 
-    # --- 1️⃣ Calculate Return & Define Target ---
+    # --- 1️⃣ Load and Extract the Model ---
+    try:
+        model_metadata = joblib.load(model_path)
+
+        if not isinstance(model_metadata, dict) or "model" not in model_metadata:
+            raise ValueError("Invalid model format. Expected a dictionary with 'model' key.")
+        
+        existing_model = model_metadata["model"]
+        trained_features = model_metadata["features"]
+
+        # Ensure the extracted model is a RandomForestClassifier
+        if not isinstance(existing_model, RandomForestClassifier):
+            raise ValueError("Expected a RandomForestClassifier model for incremental training.")
+
+    except FileNotFoundError:
+        raise ValueError(f"Model file {model_path} not found. Ensure the model is trained first.")
+
+    # --- 2️⃣ Calculate Return & Define Target ---
     new_data['return'] = new_data['close'].pct_change().shift(-1)
     upper_threshold = new_data['return'].quantile(0.75)
     lower_threshold = new_data['return'].quantile(0.25)
     new_data['target'] = np.where(new_data['return'] > upper_threshold, 1, 0)  # Buy = 1, Hold = 0
 
-    # --- 2️⃣ Handle Missing Values ---
+    # --- 3️⃣ Handle Missing Values ---
     new_data = new_data.dropna()
 
-    # --- 3️⃣ Prepare Dataset ---
+    # --- 4️⃣ Prepare Dataset ---
     X_new = new_data[features]
     y_new = new_data['target']
 
-    # --- 4️⃣ Feature Selection (Mutual Information) ---
+    # --- 5️⃣ Feature Selection (Mutual Information) ---
     mi_scores = mutual_info_classif(X_new, y_new, random_state=42)
     mi_df = pd.DataFrame({'Feature': X_new.columns, 'MI_Score': mi_scores})
     selected_features = mi_df[mi_df['MI_Score'] > 0.01]['Feature'].tolist()
     X_new = X_new[selected_features]
 
-    # --- 5️⃣ Normalize Features ---
+    # --- 6️⃣ Normalize Features ---
     scaler = StandardScaler()
     X_new_scaled = scaler.fit_transform(X_new)
 
-    # --- 6️⃣ Handle Class Imbalance (SMOTE) ---
+    # --- 7️⃣ Handle Class Imbalance (SMOTE) ---
     smote = SMOTE(sampling_strategy='auto', random_state=42)
     X_resampled, y_resampled = smote.fit_resample(X_new_scaled, y_new)
 
-    # --- 7️⃣ Compute Sample Weights *After* Resampling ---
+    # --- 8️⃣ Compute Sample Weights *After* Resampling ---
     sample_weights = compute_sample_weight(class_weight="balanced", y=y_resampled)
 
-    # --- 8️⃣ Update Model with New Data (Warm Start) ---
-    existing_model.set_params(warm_start=True)  # Enable incremental learning
+    # --- 9️⃣ Incremental Learning (Warm Start) ---
+    existing_model.set_params(warm_start=True)  # Enable incremental training
     existing_model.n_estimators += 50  # Add 50 new trees
     existing_model.fit(X_resampled, y_resampled, sample_weight=sample_weights)
 
-    return existing_model
+    # --- 🔟 Save Updated Model ---
+    joblib.dump({"model": existing_model, "features": selected_features}, model_path)
+    print(f"✅ Model updated and saved to {model_path}")
 
+    return existing_model
 
 # Train the machine learning model with advanced hyperparameter tuning
 def train_machine_learning(pair, timeframe, features=None):
@@ -335,28 +353,28 @@ def train_models(symbol, intervals, features):
 
 
 
-if __name__ == "__main__":
-    features = [
-        # 1. Trend-Following Strategy
-        ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],     
-        # 2. Volatility Breakout Strategy
-        ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
-        # 3. Momentum Reversal Strategy
-        ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
-        # 4. Momentum + Volatility Strategy
-        ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
-        # 5. Hybrid Strategy
-        ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
-        # 6. Advanced Strategy
-        ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-    ]
-    # features = [
-    #     1. Trend-Following Strategy
-    #     ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"]
-    # ]
-    intervals = ["1h"]
+# if __name__ == "__main__":
+#     features = [
+#         # 1. Trend-Following Strategy
+#         ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],     
+#         # 2. Volatility Breakout Strategy
+#         ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
+#         # 3. Momentum Reversal Strategy
+#         ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
+#         # 4. Momentum + Volatility Strategy
+#         ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
+#         # 5. Hybrid Strategy
+#         ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
+#         # 6. Advanced Strategy
+#         ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+#     ]
+#     # features = [
+#     #     1. Trend-Following Strategy
+#     #     ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"]
+#     # ]
+#     intervals = ["1h"]
 
-    # Iterate over each set of features and train models
-    for i, feature_set in enumerate(features):
-        print(f"Training models with feature set {i}: {feature_set}")
-        train_models('PERP_APT_USDC', intervals, feature_set)
+#     # Iterate over each set of features and train models
+#     for i, feature_set in enumerate(features):
+#         print(f"Training models with feature set {i}: {feature_set}")
+#         train_models('PERP_APT_USDC', intervals, feature_set)
