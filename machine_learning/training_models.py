@@ -41,8 +41,12 @@ BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
 
 # Add technical indicators to the data
+# Add technical indicators to the data based on requested features
 def add_indicators(data, required_features):
-    # Ensure the columns are of numeric type
+    """
+    Add only the necessary indicators to the data based on the requested features.
+    """
+    # Ensure numeric columns
     data[['close', 'high', 'low', 'volume']] = data[['close', 'high', 'low', 'volume']].apply(pd.to_numeric)
 
     # --- EMA ---
@@ -73,6 +77,10 @@ def add_indicators(data, required_features):
         data['bollinger_std'] = data['close'].rolling(window=20).std()
         data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
         data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
+
+    # --- Standard Deviation 20 ---
+    if 'std_20' in required_features:
+        data['std_20'] = data['close'].rolling(window=20).std()
 
     # --- RSI ---
     if 'rsi' in required_features:
@@ -130,28 +138,15 @@ def add_indicators(data, required_features):
                 af += 0.02
             data.loc[data.index[i], 'sar'] = sar
 
-    # --- Average Directional Index (ADX) ---
-    if 'adx' in required_features:
-        data['tr'] = pd.concat([
-            data['high'] - data['low'],
-            (data['high'] - data['close'].shift()).abs(),
-            (data['low'] - data['close'].shift()).abs()
-        ], axis=1).max(axis=1)
-        data['atr'] = data['tr'].rolling(window=14).mean()
-        data['plus_dm'] = np.where((data['high'] - data['high'].shift()) > (data['low'].shift() - data['low']), data['high'] - data['high'].shift(), 0)
-        data['minus_dm'] = np.where((data['low'].shift() - data['low']) > (data['high'] - data['high'].shift()), data['low'].shift() - data['low'], 0)
-        data['plus_di'] = 100 * (data['plus_dm'] / data['atr']).ewm(span=14, adjust=False).mean()
-        data['minus_di'] = 100 * (data['minus_dm'] / data['atr']).ewm(span=14, adjust=False).mean()
-        data['adx'] = 100 * (data['plus_di'] - data['minus_di']).abs() / (data['plus_di'] + data['minus_di'])
-
     # --- VWAP ---
     if 'vwap' in required_features:
-        data['vwap'] = (data['volume'] * (data['high'] + data['low'] + data['close']) / 3).cumsum() / data['volume'].cumsum()           
+        data['vwap'] = (data['volume'] * (data['high'] + data['low'] + data['close']) / 3).cumsum() / data['volume'].cumsum()
 
     # Fill NaN values after calculations
     data.fillna(method='bfill', inplace=True)
 
     return data
+
 
 
 # Train the machine learning model with advanced hyperparameter tuning
@@ -338,47 +333,30 @@ def train_models(symbol, intervals, features):
     for interval in intervals:
         train_machine_learning(symbol, interval, features)
 
-# 1. Trend-Following Strategy
-#     ema_20, ema_50, macd, macd_signal, adx
-# 2. Volatility Breakout Strategy
-#     atr, bollinger_hband, bollinger_lband, std_20
-# 3. Momentum Reversal Strategy
-#     rsi, stoch_k, stoch_d, roc, momentum
-# 4. Momentum + Volatility Strategy
-#     rsi, atr, bollinger_hband, bollinger_lband, roc, momentum
-# 5. Hybrid Strategy
-#     ema_20, ema_50, atr, bollinger_hband, rsi, macd
-# 6. Advanced Strategy
-#     tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b, sar
 
 
-# if __name__ == "__main__":
-#     features = [
-#         # 1. Trend-Following Strategy
-#         ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],
-        
-#         # 2. Volatility Breakout Strategy
-#         ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
-        
-#         # 3. Momentum Reversal Strategy
-#         ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
-        
-#         # 4. Momentum + Volatility Strategy
-#         ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
-        
-#         # 5. Hybrid Strategy
-#         ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
-        
-#         # 6. Advanced Strategy
-#         ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-#     ]
-#     # features = [
-#     #     # 1. Trend-Following Strategy
-#     #     ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"]
-#     # ]
-#     intervals = ["1h"]
+if __name__ == "__main__":
+    features = [
+        # 1. Trend-Following Strategy
+        ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],     
+        # 2. Volatility Breakout Strategy
+        ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
+        # 3. Momentum Reversal Strategy
+        ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
+        # 4. Momentum + Volatility Strategy
+        ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
+        # 5. Hybrid Strategy
+        ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
+        # 6. Advanced Strategy
+        ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+    ]
+    # features = [
+    #     1. Trend-Following Strategy
+    #     ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"]
+    # ]
+    intervals = ["1h"]
 
-#     # Iterate over each set of features and train models
-#     for i, feature_set in enumerate(features):
-#         print(f"Training models with feature set {i}: {feature_set}")
-#         train_models('PERP_APT_USDC', intervals, feature_set)
+    # Iterate over each set of features and train models
+    for i, feature_set in enumerate(features):
+        print(f"Training models with feature set {i}: {feature_set}")
+        train_models('PERP_APT_USDC', intervals, feature_set)

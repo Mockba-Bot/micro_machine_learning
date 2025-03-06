@@ -76,20 +76,15 @@ def run_machine_learning_and_historical_data():
             # Define the features array
             features = [
                 # 1. Trend-Following Strategy
-                ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],
-                
+                ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],   
                 # 2. Volatility Breakout Strategy
                 ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
-                
                 # 3. Momentum Reversal Strategy
                 ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
-                
                 # 4. Momentum + Volatility Strategy
                 ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
-                
                 # 5. Hybrid Strategy
                 ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
-                
                 # 6. Advanced Strategy
                 ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
             ]
