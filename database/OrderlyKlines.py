@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from dotenv import load_dotenv
 from sqlalchemy import TIMESTAMP, Float, text
 from database import operations
+# import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import schedule
 import threading
@@ -221,3 +222,9 @@ def run_all_timeframes(orderly_symbols):
         fetch_and_store(timeframe, orderly_symbols)
     end_time = time.time()
     print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")
+
+
+# symbol = 'PERP_APT_USDC'
+# interval = '1h'
+# df = fetch_historical_orderly(symbol, interval)
+# store_data(symbol, interval, df)

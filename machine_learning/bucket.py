@@ -32,7 +32,7 @@ def download_model(bucket_name, key, local_path):
         # print(f"Model downloaded to {local_path}")
         return True
     except Exception as e:
-        print(f"Model not found it needs to be trained")
+        # print(f"Model not found it needs to be trained")
         return False
 
 def upload_model(bucket_name, key, local_path):

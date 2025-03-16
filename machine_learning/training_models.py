@@ -3,8 +3,8 @@ import os
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, make_scorer
+from sklearn.preprocessing import StandardScaler, label_binarize
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.utils.class_weight import compute_sample_weight
 from scipy.stats import randint
@@ -41,7 +41,6 @@ BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
 
 # Add technical indicators to the data
-# Add technical indicators to the data based on requested features
 def add_indicators(data, required_features):
     """
     Add only the necessary indicators to the data based on the requested features.
@@ -50,10 +49,13 @@ def add_indicators(data, required_features):
     data[['close', 'high', 'low', 'volume']] = data[['close', 'high', 'low', 'volume']].apply(pd.to_numeric)
 
     # --- EMA ---
-    if 'ema_20' in required_features:
-        data['ema_20'] = data['close'].ewm(span=20, adjust=False).mean()
-    if 'ema_50' in required_features:
-        data['ema_50'] = data['close'].ewm(span=50, adjust=False).mean()
+    for feature in required_features:
+        if feature.startswith("ema_"):
+            try:
+                window = int(feature.split("_")[1])  # Extract window size from feature name
+                data[feature] = data['close'].ewm(span=window, adjust=False).mean()
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
     # --- MACD ---
     if any(x in required_features for x in ['macd', 'macd_signal']):
@@ -63,53 +65,138 @@ def add_indicators(data, required_features):
         data['macd_signal'] = data['macd'].ewm(span=9, adjust=False).mean()
 
     # --- ATR ---
-    if 'atr' in required_features:
-        data['tr'] = pd.concat([
-            data['high'] - data['low'],
-            (data['high'] - data['close'].shift()).abs(),
-            (data['low'] - data['close'].shift()).abs()
-        ], axis=1).max(axis=1)
-        data['atr'] = data['tr'].rolling(window=14).mean()
+    for feature in required_features:
+        if feature.startswith("atr_"):
+            try:
+                window = int(feature.split("_")[1])  # Extract window size from feature name
+                data['tr'] = pd.concat([
+                    data['high'] - data['low'],
+                    (data['high'] - data['close'].shift()).abs(),
+                    (data['low'] - data['close'].shift()).abs()
+                ], axis=1).max(axis=1)
+                data[feature] = data['tr'].rolling(window=window).mean()
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
     # --- Bollinger Bands ---
-    if any(x in required_features for x in ['bollinger_hband', 'bollinger_lband']):
-        data['bollinger_mavg'] = data['close'].rolling(window=20).mean()
-        data['bollinger_std'] = data['close'].rolling(window=20).std()
-        data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
-        data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
+    for feature in required_features:
+        if feature.startswith("bollinger_"):
+            try:
+                window = int(feature.split("_")[-1])  # Extract window size from feature name
+                data['bollinger_mavg'] = data['close'].rolling(window=window).mean()
+                data['bollinger_std'] = data['close'].rolling(window=window).std()
+                data['bollinger_hband'] = data['bollinger_mavg'] + (data['bollinger_std'] * 2)
+                data['bollinger_lband'] = data['bollinger_mavg'] - (data['bollinger_std'] * 2)
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
-    # --- Standard Deviation 20 ---
-    if 'std_20' in required_features:
-        data['std_20'] = data['close'].rolling(window=20).std()
+    # --- Standard Deviation ---
+    for feature in required_features:
+        if feature.startswith("std_"):
+            try:
+                window = int(feature.split("_")[1])  # Extract window size from feature name
+                data[feature] = data['close'].rolling(window=window).std()
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
     # --- RSI ---
-    if 'rsi' in required_features:
-        delta = data['close'].diff()
-        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-        rs = gain / loss
-        data['rsi'] = 100 - (100 / (1 + rs))
+    for feature in required_features:
+        if feature.startswith("rsi_"):
+            try:
+                window = int(feature.split("_")[1])  # Extract window size from feature name
+                delta = data['close'].diff()
+                gain = delta.where(delta > 0, 0).rolling(window=window).mean()
+                loss = -delta.where(delta < 0, 0).rolling(window=window).mean()
+                rs = gain / loss
+                data[feature] = 100 - (100 / (1 + rs))
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
     # --- Stochastic Oscillator ---
-    if any(x in required_features for x in ['stoch_k', 'stoch_d']):
-        data['stoch_k'] = ((data['close'] - data['low'].rolling(14).min()) /
-                           (data['high'].rolling(14).max() - data['low'].rolling(14).min())) * 100
-        data['stoch_d'] = data['stoch_k'].rolling(3).mean()
+    for feature in required_features:
+        if feature.startswith("stoch_"):
+            try:
+                window = int(feature.split("_")[-1])  # Extract window size from feature name
+                data['stoch_k'] = ((data['close'] - data['low'].rolling(window).min()) /
+                                   (data['high'].rolling(window).max() - data['low'].rolling(window).min())) * 100
+                data['stoch_d'] = data['stoch_k'].rolling(3).mean()
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
-    # --- Momentum Indicator ---
-    if 'momentum' in required_features:
-        data['momentum'] = data['close'].diff(periods=10)
+    # --- Momentum ---
+    for feature in required_features:
+        if feature.startswith("momentum_"):
+            try:
+                window = int(feature.split("_")[1])  # Extract window size from feature name
+                data[feature] = data['close'].diff(periods=window)
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
     # --- Rate of Change (ROC) ---
-    if 'roc' in required_features:
-        data['roc'] = data['close'].pct_change(periods=10) * 100
+    for feature in required_features:
+        if feature.startswith("roc_"):
+            try:
+                window = int(feature.split("_")[1])  # Extract window size from feature name
+                data[feature] = data['close'].pct_change(periods=window) * 100
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
 
-    # --- Ichimoku Cloud Components ---
-    if any(x in required_features for x in ['tenkan_sen', 'kijun_sen', 'senkou_span_a', 'senkou_span_b']):
-        data['tenkan_sen'] = (data['high'].rolling(window=9).max() + data['low'].rolling(window=9).min()) / 2
-        data['kijun_sen'] = (data['high'].rolling(window=26).max() + data['low'].rolling(window=26).min()) / 2
-        data['senkou_span_a'] = ((data['tenkan_sen'] + data['kijun_sen']) / 2).shift(26)
-        data['senkou_span_b'] = ((data['high'].rolling(window=52).max() + data['low'].rolling(window=52).min()) / 2).shift(26)
+     
+        # --- ADX ---
+    for feature in required_features:
+        if feature.startswith("adx"):
+            try:
+                # If the feature has an underscore, assume the portion after it is the window size
+                if "_" in feature:
+                    window = int(feature.split("_")[1])
+                else:
+                    window = 14  # Default window for ADX if no underscore
+
+                data['plus_dm'] = data['high'].diff().where(lambda x: x > 0, 0)
+                data['minus_dm'] = -data['low'].diff().where(lambda x: x < 0, 0)
+
+                # Calculate True Range (TR)
+                data['tr'] = pd.concat([
+                    data['high'] - data['low'],
+                    (data['high'] - data['close'].shift()).abs(),
+                    (data['low'] - data['close'].shift()).abs()
+                ], axis=1).max(axis=1)
+
+                # Calculate +DI and -DI
+                data['plus_di'] = 100 * (
+                    data['plus_dm'].rolling(window=window).mean()
+                    / data['tr'].rolling(window=window).mean()
+                )
+                data['minus_di'] = 100 * (
+                    data['minus_dm'].rolling(window=window).mean()
+                    / data['tr'].rolling(window=window).mean()
+                )
+
+                # Calculate ADX
+                data['dx'] = 100 * abs(data['plus_di'] - data['minus_di']) / (data['plus_di'] + data['minus_di'])
+                data[feature] = data['dx'].rolling(window=window).mean()
+
+            except (IndexError, ValueError) as e:
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}. Error: {e}")
+
+    # --- Ichimoku Cloud ---
+    for feature in required_features:
+        if feature.startswith("tenkan_sen_"):
+            try:
+                window = int(feature.split("_")[-1])  # Extract window size from feature name
+                data[feature] = (data['high'].rolling(window=window).max() + data['low'].rolling(window=window).min()) / 2
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
+        if feature.startswith("kijun_sen_"):
+            try:
+                window = int(feature.split("_")[-1])  # Extract window size from feature name
+                data[feature] = (data['high'].rolling(window=window).max() + data['low'].rolling(window=window).min()) / 2
+            except (IndexError, ValueError):
+                print(f"⚠️ Warning: Could not extract window size from feature: {feature}")
+        if feature.startswith("senkou_span_a"):
+            data[feature] = ((data['tenkan_sen_9'] + data['kijun_sen_26']) / 2).shift(26)
+        if feature.startswith("senkou_span_b"):
+            data[feature] = ((data['high'].rolling(window=52).max() + data['low'].rolling(window=52).min()) / 2).shift(26)
 
     # --- Parabolic SAR ---
     if 'sar' in required_features:
@@ -148,54 +235,202 @@ def add_indicators(data, required_features):
     return data
 
 
+def safe_roc_auc_score(y_true, y_pred_proba, sample_weight=None, **kwargs):
+    all_classes = [-1, 0, 1]
+    unique_test_labels = np.unique(y_true)
 
-# Train the machine learning model with advanced hyperparameter tuning
-def train_model(data, model_path, features):
-    """
-    Train a Random Forest model with optimized hyperparameters for binary classification (Buy/Hold).
-    """
+    if len(unique_test_labels) < 2:
+        return np.nan  # ROC-AUC is undefined for fewer than 2 classes
 
-    # --- 1️⃣ Create Labels (Target) with Upper & Lower Thresholds ---
+    # Ensure y_pred_proba is 2D
+    if len(y_pred_proba.shape) == 1:
+        y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
+
+    if len(unique_test_labels) == 2:
+        # Binary classification
+        pos_label = sorted(unique_test_labels)[1]
+        pos_index = all_classes.index(pos_label)
+        return roc_auc_score(
+            y_true, 
+            y_pred_proba[:, pos_index], 
+            sample_weight=sample_weight
+        )
+    else:
+        # Multi-class classification
+        y_true_onehot = label_binarize(y_true, classes=all_classes)
+        return roc_auc_score(
+            y_true_onehot,
+            y_pred_proba,
+            multi_class='ovr',
+            average='macro',
+            sample_weight=sample_weight
+        )
+
+# Tune the Mutual Information threshold
+def tune_mi_threshold(X, y, thresholds=[0.005, 0.01, 0.02, 0.05, 0.08]):
+    """
+    Automatically finds the best mutual information (MI) threshold.
+    """
+    best_threshold = None
+    best_score = -np.inf
+    best_features = None
+
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+    for threshold in thresholds:
+        mi_scores = mutual_info_classif(X, y, random_state=42)
+        mi_df = pd.DataFrame({'Feature': X.columns, 'MI_Score': mi_scores})
+        selected_features = mi_df[mi_df['MI_Score'] > threshold]['Feature'].tolist()
+
+        if len(selected_features) < 2:
+            # Skip if too few features remain
+            continue
+
+        X_selected = X[selected_features]
+
+        # Normalize Features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_selected)
+
+        # Handle Class Imbalance
+        smote = SMOTE(sampling_strategy='auto', random_state=42)
+        X_resampled, y_resampled = smote.fit_resample(X_scaled, y)
+
+        # Train a basic model using cross-validation
+        rf = RandomForestClassifier(random_state=42, n_estimators=500)
+        scores = []
+        for train_idx, test_idx in skf.split(X_resampled, y_resampled):
+            X_train, X_test = X_resampled[train_idx], X_resampled[test_idx]
+            y_train, y_test = y_resampled[train_idx], y_resampled[test_idx]
+
+            # Skip if fewer than 2 classes in y_test
+            if len(np.unique(y_test)) < 2:
+                scores.append(np.nan)
+                continue
+
+            rf.fit(X_train, y_train)
+            y_pred_proba = rf.predict_proba(X_test)  # Probability estimates
+
+            # Ensure y_pred_proba is 2D
+            if len(y_pred_proba.shape) == 1:
+                y_pred_proba = y_pred_proba.reshape(-1, 1)
+
+            # Calculate ROC-AUC
+            roc_auc = safe_roc_auc_score(y_test, y_pred_proba)
+            scores.append(roc_auc)
+
+        mean_score = np.nanmean(scores)  # Safely handle any np.nan
+        print(f"Threshold {threshold}: Selected {len(selected_features)} features - ROC-AUC: {mean_score:.4f}")
+
+        # Store the best threshold if improvement
+        if mean_score > best_score:
+            best_score = mean_score
+            best_threshold = threshold
+            best_features = selected_features
+
+    # Print the best threshold and selected features
+    print(f"✅ Best MI Threshold: {best_threshold}, Features Selected: {len(best_features)}")
+    print(f"✅ Selected Features: {best_features}")
+
+    return best_threshold, best_features
+
+
+# Train the model with optimized hyperparameters and automatic MI threshold tuning
+def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY):
+    """
+    Train a Random Forest model with features selected based on the interval and strategy.
+    Ensure that 'close' is always included in the final feature set.
+    """
+    # Get features for the specified interval and strategy
+    features_dict = get_features_for_strategy(interval, strategy)
+    features = features_dict["features"]
+    if not features:
+        raise ValueError(f"No features defined for interval: {interval} and strategy: {strategy}")
+
+    # Ensure essential market data is included
+    base_features = ['close', 'high', 'low', 'volume']
+    full_features = list(set(base_features + features))  # Merge required & requested features
+
+    # Create Labels (Target) for Buy (1), Hold (0), Sell (-1)
     data['return'] = data['close'].pct_change().shift(-1)  # Predicting next period movement
-    upper_threshold = data['return'].quantile(0.75)  # Top 25% → Buy
-    lower_threshold = data['return'].quantile(0.25)  # Bottom 25% → Hold
+    upper_threshold = data['return'].quantile(0.75)  # Buy threshold
+    lower_threshold = data['return'].quantile(0.25)  # Sell threshold
 
-    data['target'] = np.where(data['return'] > upper_threshold, 1, 0)
+    # 🛠 Assign Labels:
+    #  1 = Buy (future return is high)
+    #  0 = Hold (neutral range)
+    # -1 = Sell (future return is low)
+    data['target'] = np.where(data['return'] > upper_threshold, 1, 
+                      np.where(data['return'] < lower_threshold, -1, 0))
+    
+    # Print how many signals 1, 0, and -1 exist
+    print("Signal distribution:")
+    print(data['target'].value_counts())
 
-    # --- 2️⃣ Handle Missing Values ---
+    # Handle missing values
     data = data.dropna()
 
-    # --- 3️⃣ Prepare Data ---
-    X = data[features]
-    y = data['target']
+    # Prepare dataset
+    X = data[full_features]
+    y = data['target'].values  # Ensure y is a 1D array
 
-    # --- 4️⃣ Feature Selection (Mutual Information) ---
-    mi_scores = mutual_info_classif(X, y, random_state=42)
-    mi_df = pd.DataFrame({'Feature': X.columns, 'MI_Score': mi_scores})
-    selected_features = mi_df[mi_df['MI_Score'] > 0.01]['Feature'].tolist()
+    # Debugging: Print the shape of y
+    print(f"Shape of y: {y.shape}")  # Should output (n_samples,)
+
+    # If y is not 1D, flatten it
+    if len(y.shape) > 1:
+        y = y.ravel()  # Flatten to 1D
+
+    # **Auto-tune MI threshold**
+    best_threshold, selected_features = tune_mi_threshold(X, y)
+
+    # Use the best-selected features
     X = X[selected_features]
 
-    # --- 5️⃣ Remove Highly Correlated Features ---
+    # Remove highly correlated features
     correlation_matrix = X.corr().abs()
-    upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
-    high_correlation_features = [column for column in upper_triangle.columns if any(upper_triangle[column] > 0.90)]
-    X = X.drop(columns=high_correlation_features)
+    print("Correlation Matrix:")
+    print(correlation_matrix)
 
-    # --- 6️⃣ Normalize Features ---
+    # Calculate dynamic correlation threshold
+    num_features = len(selected_features)
+    min_features_to_retain = int(0.75 * num_features)  # Retain at least 75% of features
+    print(f"Total features: {num_features}, Min features to retain: {min_features_to_retain}")
+
+    # Remove highly correlated features
+    upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
+    high_correlation_features = [column for column in upper_triangle.columns if any(upper_triangle[column] > 0.98)]  # Adjusted threshold
+    final_features = [f for f in selected_features if f not in high_correlation_features]
+
+    # Ensure 'close' is always included in the final features
+    if 'close' not in final_features:
+        print("⚠️ Warning: 'close' was not in the final features. Adding it back.")
+        final_features.append('close')
+
+    # Ensure at least 75% of features are retained
+    if len(final_features) < min_features_to_retain:
+        print(f"⚠️ Warning: Only {len(final_features)} features remain after removing correlations. Retaining top {min_features_to_retain} features.")
+        final_features = selected_features[:min_features_to_retain]  # Retain top 75% features
+
+    # Ensure 'close' is still present after retaining top features
+    if 'close' not in final_features:
+        print("⚠️ Warning: 'close' was not in the retained features. Adding it back.")
+        final_features.append('close')
+
+    X = X[final_features]
+
+    # Normalize Features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # --- 7️⃣ Handle Class Imbalance (Resampling) ---
+    # Handle Class Imbalance
     smote = SMOTE(sampling_strategy='auto', random_state=42)
     X_resampled, y_resampled = smote.fit_resample(X_scaled, y)
 
-    # --- 8️⃣ Compute Sample Weights *AFTER* Resampling ---
+    # Compute Sample Weights
     sample_weights = compute_sample_weight(class_weight="balanced", y=y_resampled)
 
-    # --- 9️⃣ StratifiedKFold Cross-Validation ---
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-    # --- 🔟 Define Hyperparameter Space ---
+    # Hyperparameter tuning with RandomizedSearchCV
     param_distributions = {
         'n_estimators': randint(500, 1500),  
         'max_depth': randint(20, 100),  
@@ -205,46 +440,58 @@ def train_model(data, model_path, features):
         'class_weight': ['balanced', 'balanced_subsample'],
     }
 
-    randomized_search = RandomizedSearchCV(
-        RandomForestClassifier(random_state=42), 
-        param_distributions, 
-        n_iter=100,
-        cv=skf,  
-        scoring='roc_auc',  
+    # Create a custom multi-class ROC-AUC scorer
+    custom_auc_scorer = make_scorer(safe_roc_auc_score, needs_proba=True)
+
+    randomized_search = RandomizedSearchCV( 
+        RandomForestClassifier(random_state=42),
+        param_distributions=param_distributions,
+        n_iter=200,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
+        scoring=custom_auc_scorer,
         random_state=42,
         n_jobs=cpu_count
     )
 
     randomized_search.fit(X_resampled, y_resampled, sample_weight=sample_weights)
 
-    # --- 1️⃣1️⃣ Get the Best Model ---
+    # Get the best model
     best_model = randomized_search.best_estimator_
 
-    # --- 1️⃣2️⃣ Evaluate Performance ---
+    # Evaluate Performance
     y_pred = best_model.predict(X_resampled)
-    y_pred_proba = best_model.predict_proba(X_resampled)[:, 1]
+    y_pred_proba = best_model.predict_proba(X_resampled)
 
-    print(f"Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    print(f"Precision: {precision_score(y_resampled, y_pred):.4f}")
-    print(f"Recall: {recall_score(y_resampled, y_pred):.4f}")
-    print(f"F1-Score: {f1_score(y_resampled, y_pred):.4f}")
-    print(f"ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba):.4f}")
+    # Debugging: Check the shape of y_pred_proba
+    print(f"Shape of y_pred_proba: {y_pred_proba.shape}")  # Should be (n_samples, n_classes)
 
-    # --- 1️⃣3️⃣ Save the Model ---
+    # Ensure y_pred_proba is 2D
+    if len(y_pred_proba.shape) == 1:
+        y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
+
+    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+
+    # Save Model & Features
     model_metadata = {
-        "model": best_model,  # Save the trained model
-        "features": features  # Save the feature list
+        "model": best_model,
+        "used_features": final_features  # Save the final features used for training
     }
-    joblib.dump(model_metadata, model_path)  # Save everything as a dictionary
-    print(f"✅ Model trained and saved to {model_path}")
+    joblib.dump(model_metadata, model_path)
+    print(f"✅ Model trained and saved at {model_path} with features: {final_features}")
+    upload_model(BUCKET_NAME, MODEL_KEY, model_path)
+    print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
 
 
 # Update the existing model with new data
-def update_model(model_path, new_data, features):
+def update_model(model_path, new_data, features, BUCKET_NAME, MODEL_KEY):
     """
     Update an existing Random Forest model with new data using incremental learning (warm start).
+    Retains the same feature set and preprocessing steps as the original model.
     """
-
     # --- 1️⃣ Load and Extract the Model ---
     try:
         model_metadata = joblib.load(model_path)
@@ -253,7 +500,7 @@ def update_model(model_path, new_data, features):
             raise ValueError("Invalid model format. Expected a dictionary with 'model' key.")
         
         existing_model = model_metadata["model"]
-        trained_features = model_metadata["features"]
+        trained_features = model_metadata["used_features"]  # Use the same features as the original model
 
         # Ensure the extracted model is a RandomForestClassifier
         if not isinstance(existing_model, RandomForestClassifier):
@@ -263,51 +510,88 @@ def update_model(model_path, new_data, features):
         raise ValueError(f"Model file {model_path} not found. Ensure the model is trained first.")
 
     # --- 2️⃣ Calculate Return & Define Target ---
-    new_data['return'] = new_data['close'].pct_change().shift(-1)
-    upper_threshold = new_data['return'].quantile(0.75)
-    lower_threshold = new_data['return'].quantile(0.25)
-    new_data['target'] = np.where(new_data['return'] > upper_threshold, 1, 0)  # Buy = 1, Hold = 0
+    new_data['return'] = new_data['close'].pct_change().shift(-1)  # Predicting next period movement
+    upper_threshold = new_data['return'].quantile(0.75)  # Buy threshold
+    lower_threshold = new_data['return'].quantile(0.25)  # Sell threshold
+
+    # 🛠 Assign Labels:
+    #  1 = Buy (future return is high)
+    #  0 = Hold (neutral range)
+    # -1 = Sell (future return is low)
+    new_data['target'] = np.where(new_data['return'] > upper_threshold, 1, 
+                          np.where(new_data['return'] < lower_threshold, -1, 0))
+    
+    # Print how many signals 1, 0, and -1 exist
+    print("Signal distribution:")
+    print(new_data['target'].value_counts())
 
     # --- 3️⃣ Handle Missing Values ---
     new_data = new_data.dropna()
 
     # --- 4️⃣ Prepare Dataset ---
-    X_new = new_data[features]
-    y_new = new_data['target']
+    X_new = new_data[trained_features]  # Use the same features as the original model
+    y_new = new_data['target'].values  # Ensure y is a 1D array
 
-    # --- 5️⃣ Feature Selection (Mutual Information) ---
-    mi_scores = mutual_info_classif(X_new, y_new, random_state=42)
-    mi_df = pd.DataFrame({'Feature': X_new.columns, 'MI_Score': mi_scores})
-    selected_features = mi_df[mi_df['MI_Score'] > 0.01]['Feature'].tolist()
-    X_new = X_new[selected_features]
+    # If y is not 1D, flatten it
+    if len(y_new.shape) > 1:
+        y_new = y_new.ravel()  # Flatten to 1D
 
-    # --- 6️⃣ Normalize Features ---
+    # --- 5️⃣ Normalize Features ---
     scaler = StandardScaler()
     X_new_scaled = scaler.fit_transform(X_new)
 
-    # --- 7️⃣ Handle Class Imbalance (SMOTE) ---
+    # --- 6️⃣ Handle Class Imbalance (SMOTE) ---
     smote = SMOTE(sampling_strategy='auto', random_state=42)
     X_resampled, y_resampled = smote.fit_resample(X_new_scaled, y_new)
 
-    # --- 8️⃣ Compute Sample Weights *After* Resampling ---
+    # --- 7️⃣ Compute Sample Weights *After* Resampling ---
     sample_weights = compute_sample_weight(class_weight="balanced", y=y_resampled)
 
-    # --- 9️⃣ Incremental Learning (Warm Start) ---
+    # --- 8️⃣ Incremental Learning (Warm Start) ---
     existing_model.set_params(warm_start=True)  # Enable incremental training
     existing_model.n_estimators += 50  # Add 50 new trees
     existing_model.fit(X_resampled, y_resampled, sample_weight=sample_weights)
 
+    # --- 9️⃣ Evaluate Updated Model ---
+    y_pred = existing_model.predict(X_resampled)
+    y_pred_proba = existing_model.predict_proba(X_resampled)
+
+    # Debugging: Check the shape of y_pred_proba
+    print(f"Shape of y_pred_proba: {y_pred_proba.shape}")  # Should be (n_samples, n_classes)
+
+    # Ensure y_pred_proba is 2D
+    if len(y_pred_proba.shape) == 1:
+        y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
+
+    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+
     # --- 🔟 Save Updated Model ---
-    joblib.dump({"model": existing_model, "features": selected_features}, model_path)
+    model_metadata = {
+        "model": existing_model,
+        "used_features": trained_features  # Retain the same features as the original model
+    }
+    joblib.dump(model_metadata, model_path)
     print(f"✅ Model updated and saved to {model_path}")
+    upload_model(BUCKET_NAME, MODEL_KEY, model_path)
+    print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
 
     return existing_model
 
 # Train the machine learning model with advanced hyperparameter tuning
-def train_machine_learning(pair, timeframe, features=None):
+def train_machine_learning(pair, interval, strategy):
+ 
+    featutes_dict = get_features_for_strategy(interval, strategy)
+    features = featutes_dict["features"]
+    if not features:
+        raise ValueError(f"No features defined for interval: {interval} and strategy: {strategy}")
+
     model = "_".join(features).replace("[", "").replace("]", "").replace("'", "_").replace(" ", "")
-    MODEL_KEY = f'Mockba/trained_models/trained_model_{pair}_{timeframe}_{model}.pkl'
-    local_model_path = f'temp/trained_model_{pair}_{timeframe}_{model}.pkl'
+    MODEL_KEY = f'Mockba/trained_models/trained_model_{pair}_{interval}_{model}.pkl'
+    local_model_path = f'temp/trained_model_{pair}_{interval}_{model}.pkl'
 
     # Get the current date
     now = datetime.now()
@@ -315,7 +599,7 @@ def train_machine_learning(pair, timeframe, features=None):
     values = f'2024-01-01|{current_date}'
 
     # Get historical data
-    data = get_historical_data(pair, timeframe, values)
+    data = get_historical_data(pair, interval, values)
 
     # Add technical indicators
     data = add_indicators(data, features)
@@ -328,14 +612,11 @@ def train_machine_learning(pair, timeframe, features=None):
     if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
         # Load existing model
         print("Loaded existing model.")
-        model = joblib.load(local_model_path)
-        update_model(model, data, features)
-        upload_model(BUCKET_NAME, MODEL_KEY, local_model_path)
+        update_model(local_model_path, data, features, BUCKET_NAME, MODEL_KEY)
     else:
         # Train a new model if none exists
         print("No existing model found. Training a new model.")
-        train_model(data, local_model_path, features)
-        upload_model(BUCKET_NAME, MODEL_KEY, local_model_path)
+        train_model(data, local_model_path, interval, strategy, BUCKET_NAME, MODEL_KEY)
 
     # Delete local model file after upload
     if os.path.exists(local_model_path):
@@ -345,36 +626,62 @@ def train_machine_learning(pair, timeframe, features=None):
 
     print("✅ Model training complete.")    
 
+# Get the list of features for a given interval and strategy
+def get_features_for_strategy(interval, strategy):
+    """
+    Returns the interval, strategy, and the list of features for the given interval and strategy.
+    
+    Parameters:
+        interval (str): The timeframe interval (e.g., '5m', '1h', '4h', '1d').
+        strategy (str): The strategy name (e.g., 'Trend-Following', 'Volatility Breakout').
+    
+    Returns:
+        dict: A dictionary with 'interval', 'strategy', and 'features' keys.
+    """
 
-# Main function to train or update models for multiple intervals
-def train_models(symbol, intervals, features):
-    for interval in intervals:
-        train_machine_learning(symbol, interval, features)
+    return {
+        "interval": interval,
+        "strategy": strategy,
+        "features": strategy_features.get(interval, {}).get(strategy, [])
+    }
 
-
-
-# if __name__ == "__main__":
-#     features = [
-#         # 1. Trend-Following Strategy
-#         ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],     
-#         # 2. Volatility Breakout Strategy
-#         ["atr", "bollinger_hband", "bollinger_lband", "std_20", "vwap"],
-#         # 3. Momentum Reversal Strategy
-#         ["rsi", "stoch_k", "stoch_d", "roc", "momentum", "vwap"],
-#         # 4. Momentum + Volatility Strategy
-#         ["rsi", "atr", "bollinger_hband", "bollinger_lband", "roc", "momentum", "vwap"],
-#         # 5. Hybrid Strategy
-#         ["ema_20", "ema_50", "atr", "bollinger_hband", "rsi", "macd", "vwap"],
-#         # 6. Advanced Strategy
-#         ["tenkan_sen", "kijun_sen", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-#     ]
-#     # features = [
-#     #     1. Trend-Following Strategy
-#     #     ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"]
-#     # ]
-#     intervals = ["1h"]
-
-#     # Iterate over each set of features and train models
-#     for i, feature_set in enumerate(features):
-#         print(f"Training models with feature set {i}: {feature_set}")
-#         train_models('PERP_APT_USDC', intervals, feature_set)
+# Train models with different features
+if __name__ == "__main__":
+    strategy_features = {
+        "5m": {
+            "Trend-Following": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "vwap"],
+            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
+            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
+            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
+            "Hybrid": ["ema_12", "ema_26", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
+            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+        },
+        "1h": {
+            "Trend-Following": ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],
+            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
+            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
+            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
+            "Hybrid": ["ema_20", "ema_50", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
+            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+        },
+        "4h": {
+            "Trend-Following": ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"],
+            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
+            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
+            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
+            "Hybrid": ["ema_50", "ema_200", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
+            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+        },
+        "1d": {
+            "Trend-Following": ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"],
+            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
+            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
+            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
+            "Hybrid": ["ema_50", "ema_200", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
+            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
+        }
+    }
+    # User selects interval and strategy
+    interval = "1h"
+    strategy = "Trend-Following"
+    train_machine_learning('PERP_APT_USDC', interval, strategy)
