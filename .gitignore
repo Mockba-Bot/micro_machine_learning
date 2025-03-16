@@ -12,7 +12,6 @@ ENV/
 env.bak/
 venv.bak/
 /venv
-.env.micro.machine.learning/
 .env.micro.machine.learning
 
 # Migration files
