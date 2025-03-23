@@ -19,3 +19,4 @@ app/alembic/
 
 app/alembic.ini
 docker-compose.yml
+.vscode/settings.json
