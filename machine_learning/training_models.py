@@ -10,19 +10,14 @@ from sklearn.utils.class_weight import compute_sample_weight
 from scipy.stats import randint
 from imblearn.over_sampling import SMOTE
 from sklearn.utils.class_weight import compute_sample_weight
-import psycopg2  # Library for PostgreSQL connection
 from dotenv import load_dotenv
 import numpy as np
 import joblib  # Library for model serialization
-from datetime import datetime, timedelta  # Import timedelta from datetime
-from sqlalchemy import text
-import requests
-from datetime import timedelta
+from datetime import datetime  # Import timedelta from datetime
 # Add the directory containing your modules to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from database import getHistorical
-from database import operations
 from historical_data import get_historical_data
+import time
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -39,6 +34,44 @@ CPU_COUNT = os.getenv("CPU_COUNT")
 cpu_count = os.cpu_count()-int(CPU_COUNT)
 BUCKET_NAME = os.getenv("BUCKET_NAME")  # Your bucket name
 
+strategy_features = {
+        "5m": {
+            "Trend-Following": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
+            "Volatility Breakout": {"features": ["atr_14", "bollinger_hband", "bollinger_lband", "std_20", "vwap"], "force_features": True},
+            "Momentum Reversal": {"features": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Momentum + Volatility": {"features": ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Hybrid": {"features": ["ema_12", "ema_26", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
+            "Advanced": {"features": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
+            "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        },
+        "1h": {
+            "Trend-Following": {"features": ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
+            "Volatility Breakout": {"features": ["atr_14", "bollinger_hband", "bollinger_lband", "std_20", "vwap"], "force_features": True},
+            "Momentum Reversal": {"features": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Momentum + Volatility": {"features": ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Hybrid": {"features": ["ema_20", "ema_50", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
+            "Advanced": {"features": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
+            "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        },
+        "4h": {
+            "Trend-Following": {"features": ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
+            "Volatility Breakout": {"features": ["atr_14", "bollinger_hband", "bollinger_lband", "std_20", "vwap"], "force_features": True},
+            "Momentum Reversal": {"features": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Momentum + Volatility": {"features": ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Hybrid": {"features": ["ema_50", "ema_200", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
+            "Advanced": {"features": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
+            "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        },
+        "1d": {
+            "Trend-Following": {"features": ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
+            "Volatility Breakout": {"features": ["atr_14", "bollinger_hband", "bollinger_lband", "std_20", "vwap"], "force_features": True},
+            "Momentum Reversal": {"features": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Momentum + Volatility": {"features": ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
+            "Hybrid": {"features": ["ema_50", "ema_200", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
+            "Advanced": {"features": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
+            "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        }
+    }
 
 # Add technical indicators to the data
 def add_indicators(data, required_features):
@@ -336,7 +369,7 @@ def tune_mi_threshold(X, y, thresholds=[0.005, 0.01, 0.02, 0.05, 0.08]):
 
 
 # Train the model with optimized hyperparameters and automatic MI threshold tuning
-def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY):
+def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features=False):
     """
     Train a Random Forest model with features selected based on the interval and strategy.
     Ensure that 'close' is always included in the final feature set.
@@ -353,8 +386,8 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY):
 
     # Create Labels (Target) for Buy (1), Hold (0), Sell (-1)
     data['return'] = data['close'].pct_change().shift(-1)  # Predicting next period movement
-    upper_threshold = data['return'].quantile(0.75)  # Buy threshold
-    lower_threshold = data['return'].quantile(0.25)  # Sell threshold
+    upper_threshold = data['return'].quantile(0.85)  # Buy threshold
+    lower_threshold = data['return'].quantile(0.15)  # Sell threshold
 
     # 🛠 Assign Labels:
     #  1 = Buy (future return is high)
@@ -382,7 +415,12 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY):
         y = y.ravel()  # Flatten to 1D
 
     # **Auto-tune MI threshold**
-    best_threshold, selected_features = tune_mi_threshold(X, y)
+    if force_features:
+        selected_features = list(X.columns)  # Use all features directly
+        print(f"🚨 Skipping MI thresholding. Using all {len(selected_features)} strategy features.")
+    else:
+        best_threshold, selected_features = tune_mi_threshold(X, y)
+
 
     # Use the best-selected features
     X = X[selected_features]
@@ -397,10 +435,14 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY):
     min_features_to_retain = int(0.75 * num_features)  # Retain at least 75% of features
     print(f"Total features: {num_features}, Min features to retain: {min_features_to_retain}")
 
-    # Remove highly correlated features
-    upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
-    high_correlation_features = [column for column in upper_triangle.columns if any(upper_triangle[column] > 0.98)]  # Adjusted threshold
-    final_features = [f for f in selected_features if f not in high_correlation_features]
+    if force_features:
+        final_features = selected_features
+        print(f"🚨 Skipping correlation filtering. Using all {len(final_features)} strategy features (forced).")
+    else:
+        # Remove highly correlated features
+        upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
+        high_correlation_features = [column for column in upper_triangle.columns if any(upper_triangle[column] > 0.98)]  # Adjusted threshold
+        final_features = [f for f in selected_features if f not in high_correlation_features]
 
     # Ensure 'close' is always included in the final features
     if 'close' not in final_features:
@@ -487,7 +529,7 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY):
 
 
 # Update the existing model with new data
-def update_model(model_path, new_data, features, BUCKET_NAME, MODEL_KEY):
+def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
     """
     Update an existing Random Forest model with new data using incremental learning (warm start).
     Retains the same feature set and preprocessing steps as the original model.
@@ -549,7 +591,13 @@ def update_model(model_path, new_data, features, BUCKET_NAME, MODEL_KEY):
 
     # --- 8️⃣ Incremental Learning (Warm Start) ---
     existing_model.set_params(warm_start=True)  # Enable incremental training
-    existing_model.n_estimators += 50  # Add 50 new trees
+    new_trees = max(50, int(0.2 * existing_model.n_estimators))
+    # Add new trees to the existing model
+    # Note: n_estimators should be increased by the number of new trees
+    # to prevent overfitting on the new data
+    # The new trees should be at least 50 or 20% of the existing trees
+    # to ensure the model adapts to the new data
+    existing_model.n_estimators += new_trees
     existing_model.fit(X_resampled, y_resampled, sample_weight=sample_weights)
 
     # --- 9️⃣ Evaluate Updated Model ---
@@ -584,8 +632,9 @@ def update_model(model_path, new_data, features, BUCKET_NAME, MODEL_KEY):
 # Train the machine learning model with advanced hyperparameter tuning
 def train_machine_learning(pair, interval, strategy):
  
-    featutes_dict = get_features_for_strategy(interval, strategy)
-    features = featutes_dict["features"]
+    features_dict = get_features_for_strategy(interval, strategy)
+    features = features_dict["features"]
+    force_features = features_dict["force_features"]
     if not features:
         raise ValueError(f"No features defined for interval: {interval} and strategy: {strategy}")
 
@@ -612,11 +661,11 @@ def train_machine_learning(pair, interval, strategy):
     if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
         # Load existing model
         print("Loaded existing model.")
-        update_model(local_model_path, data, features, BUCKET_NAME, MODEL_KEY)
+        update_model(local_model_path, data, BUCKET_NAME, MODEL_KEY)
     else:
         # Train a new model if none exists
         print("No existing model found. Training a new model.")
-        train_model(data, local_model_path, interval, strategy, BUCKET_NAME, MODEL_KEY)
+        train_model(data, local_model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features)
 
     # Delete local model file after upload
     if os.path.exists(local_model_path):
@@ -626,7 +675,7 @@ def train_machine_learning(pair, interval, strategy):
 
     print("✅ Model training complete.")    
 
-# Get the list of features for a given interval and strategy
+
 def get_features_for_strategy(interval, strategy):
     """
     Returns the interval, strategy, and the list of features for the given interval and strategy.
@@ -636,51 +685,18 @@ def get_features_for_strategy(interval, strategy):
         strategy (str): The strategy name (e.g., 'Trend-Following', 'Volatility Breakout').
     
     Returns:
-        dict: A dictionary with 'interval', 'strategy', and 'features' keys.
+        dict: A dictionary with 'interval', 'strategy', 'features', and 'force_features' keys.
     """
-
+    strategy_info = strategy_features.get(interval, {}).get(strategy, {})
     return {
         "interval": interval,
         "strategy": strategy,
-        "features": strategy_features.get(interval, {}).get(strategy, [])
+        "features": strategy_info.get("features", []),
+        "force_features": strategy_info.get("force_features", False)
     }
 
 # Train models with different features
 if __name__ == "__main__":
-    strategy_features = {
-        "5m": {
-            "Trend-Following": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "vwap"],
-            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
-            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
-            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
-            "Hybrid": ["ema_12", "ema_26", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
-            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-        },
-        "1h": {
-            "Trend-Following": ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"],
-            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
-            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
-            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
-            "Hybrid": ["ema_20", "ema_50", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
-            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-        },
-        "4h": {
-            "Trend-Following": ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"],
-            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
-            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
-            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
-            "Hybrid": ["ema_50", "ema_200", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
-            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-        },
-        "1d": {
-            "Trend-Following": ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"],
-            "Volatility Breakout": ["atr_14", "bollinger_hband_20", "bollinger_lband_20", "std_20", "vwap"],
-            "Momentum Reversal": ["rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "vwap"],
-            "Momentum + Volatility": ["rsi_14", "atr_14", "bollinger_hband_20", "bollinger_lband_20", "roc_10", "momentum_10", "vwap"],
-            "Hybrid": ["ema_50", "ema_200", "atr_14", "bollinger_hband_20", "rsi_14", "macd", "vwap"],
-            "Advanced": ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"]
-        }
-    }
     # User selects interval and strategy
     interval = "1h"
     strategy = "Trend-Following"

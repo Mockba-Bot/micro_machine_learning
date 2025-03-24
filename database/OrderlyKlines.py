@@ -8,12 +8,10 @@ from base64 import urlsafe_b64encode
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from dotenv import load_dotenv
 from sqlalchemy import TIMESTAMP, Float, text
-from database import operations
-# import operations
+# from database import operations
+import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import schedule
 import threading
-import redis
 
 # ✅ Load environment variables
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
@@ -224,7 +222,7 @@ def run_all_timeframes(orderly_symbols):
     print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")
 
 
-# symbol = 'PERP_APT_USDC'
-# interval = '1h'
-# df = fetch_historical_orderly(symbol, interval)
-# store_data(symbol, interval, df)
+symbol = 'PERP_APT_USDC'
+interval = '1h'
+df = fetch_historical_orderly(symbol, interval)
+store_data(symbol, interval, df)
