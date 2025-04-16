@@ -435,7 +435,7 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
 
     # Calculate dynamic correlation threshold
     num_features = len(selected_features)
-    min_features_to_retain = int(0.75 * num_features)  # Retain at least 75% of features
+    min_features_to_retain = int(0.85 * num_features)  # Retain at least 75% of features
     print(f"Total features: {num_features}, Min features to retain: {min_features_to_retain}")
 
     if force_features:
@@ -525,7 +525,7 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
         "model": best_model,
         "used_features": final_features  # Save the final features used for training
     }
-    joblib.dump(model_metadata, model_path)
+    joblib.dump(model_metadata, model_path, compress=3)
     print(f"✅ Model trained and saved at {model_path} with features: {final_features}")
     upload_model(BUCKET_NAME, MODEL_KEY, model_path)
     print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
@@ -556,8 +556,8 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
 
     # --- 2️⃣ Calculate Return & Define Target ---
     new_data['return'] = new_data['close'].pct_change().shift(-1)  # Predicting next period movement
-    upper_threshold = new_data['return'].quantile(0.75)  # Buy threshold
-    lower_threshold = new_data['return'].quantile(0.25)  # Sell threshold
+    upper_threshold = new_data['return'].quantile(0.85)  # Buy threshold
+    lower_threshold = new_data['return'].quantile(0.15)  # Sell threshold
 
     # 🛠 Assign Labels:
     #  1 = Buy (future return is high)
@@ -572,6 +572,9 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
 
     # --- 3️⃣ Handle Missing Values ---
     new_data = new_data.dropna()
+
+    # ✅ Add technical indicators if missing
+    new_data = add_indicators(new_data, trained_features)
 
     # --- 4️⃣ Prepare Dataset ---
     X_new = new_data[trained_features]  # Use the same features as the original model
@@ -625,7 +628,7 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
         "model": existing_model,
         "used_features": trained_features  # Retain the same features as the original model
     }
-    joblib.dump(model_metadata, model_path)
+    joblib.dump(model_metadata, model_path, compress=3)
     print(f"✅ Model updated and saved to {model_path}")
     upload_model(BUCKET_NAME, MODEL_KEY, model_path)
     print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
@@ -642,8 +645,8 @@ def train_machine_learning(pair, interval, strategy):
         raise ValueError(f"No features defined for interval: {interval} and strategy: {strategy}")
 
     model = "_".join(features).replace("[", "").replace("]", "").replace("'", "_").replace(" ", "")
-    MODEL_KEY = f'Mockba/trained_models/trained_model_{pair}_{interval}_{model}.pkl'
-    local_model_path = f'temp/trained_model_{pair}_{interval}_{model}.pkl'
+    MODEL_KEY = f'Mockba/trained_models/trained_model_{pair}_{interval}_{model}.joblib'
+    local_model_path = f'temp/trained_model_{pair}_{interval}_{model}.joblib'
 
     # Get the current date
     now = datetime.now()

@@ -130,45 +130,54 @@ def fetch_symbol_data(symbol, interval):
 def store_data(symbol, interval, df):
     tablename = f"{symbol}_{interval}"
     
-    # ✅ Step 1: Check if table exists
+    # Step 1: Check if table exists
     with operations.db_con_historical.connect() as conn:
         table_exists_query = text(f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :tablename)")
         table_exists = conn.execute(table_exists_query, {"tablename": tablename}).fetchone()[0]
-    conn.close()
+        
+        # Step 2: Create table if not exists
+        if not table_exists:
+            print(f"🛠️ Table {tablename} does not exist. Creating it now...")
+            column_types = {
+                "start_timestamp": TIMESTAMP,
+                "open": Float,
+                "high": Float,
+                "low": Float,
+                "close": Float,
+                "volume": Float
+            }
+            df.head(0).to_sql(tablename, operations.db_con_historical, if_exists='fail', index=True, dtype=column_types)
+            
+            # Create index on start_timestamp for new tables
+            conn.execute(text(f'CREATE INDEX idx_{tablename}_timestamp ON "{tablename}" (start_timestamp)'))
+            print(f"✅ Created index on start_timestamp for {tablename}")
 
-    # ✅ Step 2: Create table if not exists
-    if not table_exists:
-        print(f"🛠️ Table {tablename} does not exist. Creating it now...")
-        column_types = {
-            "start_timestamp": TIMESTAMP,
-            "open": Float,
-            "high": Float,
-            "low": Float,
-            "close": Float,
-            "volume": Float
-        }
-        df.head(0).to_sql(tablename, operations.db_con_historical, if_exists='fail', index=True, dtype=column_types)
-
-    # ✅ Step 3: Fetch existing timestamps
+    # Step 3-5: Existing data insertion logic remains the same
     existing_timestamps = []
     if table_exists:
         existing_timestamps_query = text(f'SELECT start_timestamp FROM "{tablename}"')
         existing_timestamps = pd.read_sql(existing_timestamps_query, operations.db_con_historical)['start_timestamp'].astype(str).tolist()
 
-    # ✅ Step 4: Filter new rows
     df.index = df.index.astype(str)
     df_filtered = df[~df.index.isin(existing_timestamps)]
 
-    # ✅ Step 5: Insert new rows
     if not df_filtered.empty:
         df_filtered.to_sql(tablename, operations.db_con_historical, if_exists="append", index=True, method="multi")
-        # print(f"✅ New records found and inserted into {tablename}: {len(df_filtered)} rows.")
-    # else:
-    #     print(f"🔹 No new records found for {tablename}. Data is already up-to-date.")
 
     operations.remove_null_from_sql_table(tablename)
 
-    
+def add_indexes_to_existing_tables():
+    with operations.db_con_historical.connect() as conn:
+        # Get all tables following your naming convention
+        tables = pd.read_sql("SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'PERP_%_%'", conn)
+        
+        for table in tables['table_name']:
+            try:
+                conn.execute(text(f'CREATE INDEX idx_{table}_timestamp ON "{table}" (start_timestamp)'))
+                print(f"✅ Added index to {table}")
+            except Exception as e:
+                print(f"⚠️ Couldn't add index to {table}: {str(e)}")
+
 # ✅ Fetch and store historical data efficiently
 def fetch_and_store(interval, orderly_symbols):
     # orderly_symbols = fetch_orderly_symbols()
@@ -226,3 +235,4 @@ symbol = 'PERP_APT_USDC'
 interval = '1h'
 df = fetch_historical_orderly(symbol, interval)
 store_data(symbol, interval, df)
+# add_indexes_to_existing_tables
