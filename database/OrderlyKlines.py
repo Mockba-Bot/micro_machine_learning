@@ -12,6 +12,7 @@ from sqlalchemy import TIMESTAMP, Float, text
 import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from datetime import datetime, timedelta, timezone
 
 # ✅ Load environment variables
 dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env.micro.machine.learning'))
@@ -66,7 +67,15 @@ def fetch_orderly_symbols():
         response = requests.get(url)
         data = response.json()
         if data.get("success") and "data" in data:
-            symbols = [row["symbol"] for row in data["data"]["rows"] if "symbol" in row]
+            one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
+            symbols = []
+            for row in data["data"]["rows"]:
+                created_time = row.get("created_time")
+                if created_time:
+                    created_datetime = datetime.fromtimestamp(created_time / 1000, tz=timezone.utc)
+                    if created_datetime <= one_month_ago and "symbol" in row:
+                        symbols.append(row["symbol"])
             return symbols
         else:
             print("⚠️ Unexpected API response format or missing 'data' key.")
@@ -231,8 +240,8 @@ def run_all_timeframes(orderly_symbols):
     print(f"✅ Data fetched and stored in {end_time - start_time:.2f} seconds.")
 
 
-symbol = 'PERP_APT_USDC'
-interval = '1h'
-df = fetch_historical_orderly(symbol, interval)
-store_data(symbol, interval, df)
-# add_indexes_to_existing_tables
+# symbol = 'PERP_APT_USDC'
+# interval = '1h'
+# df = fetch_historical_orderly(symbol, interval)
+# store_data(symbol, interval, df)
+# # add_indexes_to_existing_tables

@@ -100,8 +100,8 @@ def train_or_update_linear_model(df, symbol, interval):
     Returns:
     None
     """
-    MODEL_KEY_LINEAR = f'Mockba/technical_analysis_trained_model/{symbol}_{interval}_linear_model.pkl'
-    local_model_path_linear = f'temp/{symbol}_{interval}_linear_model.pkl'
+    MODEL_KEY_LINEAR = f'Mockba/technical_analysis_trained_model/{symbol}_{interval}_linear_model.joblib'
+    local_model_path_linear = f'temp/{symbol}_{interval}_linear_model.joblib'
 
     # Ensure the directory exists
     os.makedirs(os.path.dirname(local_model_path_linear), exist_ok=True)
@@ -138,7 +138,7 @@ def train_or_update_linear_model(df, symbol, interval):
         model.fit(X_scaled, y)
 
     # Save the updated model and scaler
-    joblib.dump((model, scaler), local_model_path_linear)
+    joblib.dump((model, scaler), local_model_path_linear, compress=3)
 
     # Upload the model to the bucket
     upload_model(BUCKET_NAME, MODEL_KEY_LINEAR, local_model_path_linear)
@@ -194,8 +194,8 @@ def train_or_update_arima(df, symbol, interval):
     Returns:
     None
     """
-    MODEL_KEY_ARIMA = f'Mockba/technical_analysis_trained_model/{symbol}_{interval}_arima_model.pkl'
-    model_filename = f'temp/{symbol}_{interval}_arima_model.pkl'
+    MODEL_KEY_ARIMA = f'Mockba/technical_analysis_trained_model/{symbol}_{interval}_arima_model.joblib'
+    model_filename = f'temp/{symbol}_{interval}_arima_model.joblib'
     
     # Extract prices and apply scaling (for better model stability)
     prices = df['close'].values.astype(float)  # Ensure data is float
@@ -248,7 +248,7 @@ def train_or_update_arima(df, symbol, interval):
         model_fit = model.fit()
 
     # Save the updated model
-    joblib.dump(model_fit, model_filename)
+    joblib.dump(model_fit, model_filename, compress=3)
 
     # Upload the model to the bucket
     upload_model(BUCKET_NAME, MODEL_KEY_ARIMA, model_filename)
@@ -285,8 +285,8 @@ def train_or_update_xgboost(df, symbol, interval):
     Returns:
     None
     """
-    MODEL_KEY_XGBOOST = f'Mockba/technical_analysis_trained_model/{symbol}_{interval}_xgboost_model.pkl'
-    model_filename = f'temp/{symbol}_{interval}_xgboost_model.pkl'
+    MODEL_KEY_XGBOOST = f'Mockba/technical_analysis_trained_model/{symbol}_{interval}_xgboost_model.joblib'
+    model_filename = f'temp/{symbol}_{interval}_xgboost_model.joblib'
 
     # Extract prices and normalize
     prices = df['close'].values.reshape(-1, 1)
@@ -360,7 +360,7 @@ def train_or_update_xgboost(df, symbol, interval):
         best_model.fit(X, y)
 
     # Save the updated model
-    joblib.dump(best_model, model_filename)
+    joblib.dump(best_model, model_filename, compress=3)
 
     # Upload the model to the bucket
     upload_model(BUCKET_NAME, MODEL_KEY_XGBOOST, model_filename)

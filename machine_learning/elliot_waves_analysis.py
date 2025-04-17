@@ -45,8 +45,8 @@ def create_rf_dataset(data, look_back=60):
 
 # Train or update XGBoost model
 def train_or_update_xgboost_model(symbol, interval, look_back=60):
-    MODEL_KEY_XGBOOST = f'Mockba/elliot_waves_trained_models/{symbol}_{interval}_elliot_waves_model.pkl'
-    model_path = f'temp/{symbol}_{interval}_elliot_waves_model.pkl'
+    MODEL_KEY_XGBOOST = f'Mockba/elliot_waves_trained_models/{symbol}_{interval}_elliot_waves_model.joblib'
+    model_path = f'temp/{symbol}_{interval}_elliot_waves_model.joblib'
 
     # Ensure the directory exists
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
@@ -99,7 +99,7 @@ def train_or_update_xgboost_model(symbol, interval, look_back=60):
         best_rf = xgb_random.best_estimator_
 
     # Save the updated model
-    joblib.dump(best_rf, model_path)
+    joblib.dump(best_rf, model_path, compress=3)
 
     upload_model(BUCKET_NAME, MODEL_KEY_XGBOOST, model_path)
 

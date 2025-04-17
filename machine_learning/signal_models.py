@@ -89,7 +89,7 @@ def add_technical_indicators(df):
 
 # Train or update the ensemble model
 def train_or_update_signal_model(symbol, interval):
-    MODEL_KEY_SIGNAL = f'Mockba/signal_models/{symbol}_{interval}_signal_model.pkl'
+    MODEL_KEY_SIGNAL = f'Mockba/signal_models/{symbol}_{interval}_signal_model.joblib'
     model_path = f'temp/{symbol}_{interval}_signal_model.joblib'
 
     # Get historical data
@@ -156,7 +156,7 @@ def train_or_update_signal_model(symbol, interval):
         ensemble_model.fit(X, y)
 
     # Save the updated model
-    joblib.dump(ensemble_model, model_path)
+    joblib.dump(ensemble_model, model_path, compress=3)
 
     upload_model(BUCKET_NAME, MODEL_KEY_SIGNAL, model_path)
 

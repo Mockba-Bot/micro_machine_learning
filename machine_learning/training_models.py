@@ -356,7 +356,7 @@ def tune_mi_threshold(X, y, thresholds=[0.005, 0.01, 0.02, 0.05, 0.08]):
             scores.append(roc_auc)
 
         mean_score = np.nanmean(scores)  # Safely handle any np.nan
-        print(f"Threshold {threshold}: Selected {len(selected_features)} features - ROC-AUC: {mean_score:.4f}")
+        # print(f"Threshold {threshold}: Selected {len(selected_features)} features - ROC-AUC: {mean_score:.4f}")
 
         # Store the best threshold if improvement
         if mean_score > best_score:
@@ -365,8 +365,8 @@ def tune_mi_threshold(X, y, thresholds=[0.005, 0.01, 0.02, 0.05, 0.08]):
             best_features = selected_features
 
     # Print the best threshold and selected features
-    print(f"✅ Best MI Threshold: {best_threshold}, Features Selected: {len(best_features)}")
-    print(f"✅ Selected Features: {best_features}")
+    # print(f"✅ Best MI Threshold: {best_threshold}, Features Selected: {len(best_features)}")
+    # print(f"✅ Selected Features: {best_features}")
 
     return best_threshold, best_features
 
@@ -400,8 +400,8 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
                       np.where(data['return'] < lower_threshold, -1, 0))
     
     # Print how many signals 1, 0, and -1 exist
-    print("Signal distribution:")
-    print(data['target'].value_counts())
+    # print("Signal distribution:")
+    # print(data['target'].value_counts())
 
     # Handle missing values
     data = data.dropna()
@@ -411,7 +411,7 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
     y = data['target'].values  # Ensure y is a 1D array
 
     # Debugging: Print the shape of y
-    print(f"Shape of y: {y.shape}")  # Should output (n_samples,)
+    # print(f"Shape of y: {y.shape}")  # Should output (n_samples,)
 
     # If y is not 1D, flatten it
     if len(y.shape) > 1:
@@ -430,17 +430,17 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
 
     # Remove highly correlated features
     correlation_matrix = X.corr().abs()
-    print("Correlation Matrix:")
-    print(correlation_matrix)
+    # print("Correlation Matrix:")
+    # print(correlation_matrix)
 
     # Calculate dynamic correlation threshold
     num_features = len(selected_features)
     min_features_to_retain = int(0.85 * num_features)  # Retain at least 75% of features
-    print(f"Total features: {num_features}, Min features to retain: {min_features_to_retain}")
+    # print(f"Total features: {num_features}, Min features to retain: {min_features_to_retain}")
 
     if force_features:
         final_features = selected_features
-        print(f"🚨 Skipping correlation filtering. Using all {len(final_features)} strategy features (forced).")
+        # print(f"🚨 Skipping correlation filtering. Using all {len(final_features)} strategy features (forced).")
     else:
         # Remove highly correlated features
         upper_triangle = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
@@ -508,17 +508,17 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
     y_pred_proba = best_model.predict_proba(X_resampled)
 
     # Debugging: Check the shape of y_pred_proba
-    print(f"Shape of y_pred_proba: {y_pred_proba.shape}")  # Should be (n_samples, n_classes)
+    # print(f"Shape of y_pred_proba: {y_pred_proba.shape}")  # Should be (n_samples, n_classes)
 
     # Ensure y_pred_proba is 2D
     if len(y_pred_proba.shape) == 1:
         y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
 
-    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+    # print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    # print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
 
     # Save Model & Features
     model_metadata = {
@@ -526,9 +526,9 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
         "used_features": final_features  # Save the final features used for training
     }
     joblib.dump(model_metadata, model_path, compress=3)
-    print(f"✅ Model trained and saved at {model_path} with features: {final_features}")
+    # print(f"✅ Model trained and saved at {model_path} with features: {final_features}")
     upload_model(BUCKET_NAME, MODEL_KEY, model_path)
-    print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
+    # print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
 
 
 # Update the existing model with new data
@@ -567,8 +567,8 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
                           np.where(new_data['return'] < lower_threshold, -1, 0))
     
     # Print how many signals 1, 0, and -1 exist
-    print("Signal distribution:")
-    print(new_data['target'].value_counts())
+    # print("Signal distribution:")
+    # print(new_data['target'].value_counts())
 
     # --- 3️⃣ Handle Missing Values ---
     new_data = new_data.dropna()
@@ -617,11 +617,11 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
     if len(y_pred_proba.shape) == 1:
         y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
 
-    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+    # print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    # print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
 
     # --- 🔟 Save Updated Model ---
     model_metadata = {
@@ -629,9 +629,9 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
         "used_features": trained_features  # Retain the same features as the original model
     }
     joblib.dump(model_metadata, model_path, compress=3)
-    print(f"✅ Model updated and saved to {model_path}")
+    # print(f"✅ Model updated and saved to {model_path}")
     upload_model(BUCKET_NAME, MODEL_KEY, model_path)
-    print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
+    # print(f"✅ Model uploaded to {BUCKET_NAME}/{MODEL_KEY}")
 
     return existing_model
 
@@ -666,11 +666,11 @@ def train_machine_learning(pair, interval, strategy):
     # Check if the model exists in storage
     if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
         # Load existing model
-        print("Loaded existing model.")
+        # print("Loaded existing model.")
         update_model(local_model_path, data, BUCKET_NAME, MODEL_KEY)
     else:
         # Train a new model if none exists
-        print("No existing model found. Training a new model.")
+        # print("No existing model found. Training a new model.")
         train_model(data, local_model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features)
 
     # Delete local model file after upload
@@ -702,8 +702,8 @@ def get_features_for_strategy(interval, strategy):
     }
 
 # Train models with different features
-if __name__ == "__main__":
-    # User selects interval and strategy
-    interval = "1h"
-    strategy = "Trend-Following"
-    train_machine_learning('PERP_APT_USDC', interval, strategy)
+# if __name__ == "__main__":
+#     # User selects interval and strategy
+#     interval = "1h"
+#     strategy = "Trend-Following"
+#     train_machine_learning('PERP_APT_USDC', interval, strategy)
