@@ -8,8 +8,8 @@ from base64 import urlsafe_b64encode
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from dotenv import load_dotenv
 from sqlalchemy import TIMESTAMP, Float, text
-# from database import operations
-import operations
+from database import operations
+# import operations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from datetime import datetime, timedelta, timezone

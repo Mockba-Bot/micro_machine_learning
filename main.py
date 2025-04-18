@@ -40,27 +40,28 @@ def run_machine_learning_and_historical_data():
     #run machine learning
     for symbol in symbols:
         intervals = ['1h', '4h', '1d', '5m']
+        intervals_for_elliot_waves = ['1h', '4h', '1d']
         strategies = ["Trend-Following", "Volatility Breakout", "Momentum Reversal", "Momentum + Volatility", "Hybrid", "Advanced", "Router"]
         try:
             # Training for Elliot Waves
             print("---TRAINING ELLIOT WAVES---")
-            elliot_waves_analysis.train_models(symbol, intervals)
+            elliot_waves_analysis.train_models(symbol, intervals_for_elliot_waves)
             time.sleep(2)
 
-            print("---TRAINING SIGNAL MODELS---")
-            # Training for signal models
-            signal_models.train_models(symbol, intervals)
-            time.sleep(2)
+            # print("---TRAINING SIGNAL MODELS---")
+            # # Training for signal models
+            # signal_models.train_models(symbol, intervals)
+            # time.sleep(2)
 
-            print("---TRAINING TECHNICAL ANALYSIS---")
-            # # Training for technical analysis
-            technical_analysis.train_models(symbol, intervals)
-            time.sleep(2)
+            # print("---TRAINING TECHNICAL ANALYSIS---")
+            # # # Training for technical analysis
+            # technical_analysis.train_models(symbol, intervals)
+            # time.sleep(2)
 
-            print("---TRAINING MACHINE LEARNING MODELS---")
-            # Training for machine learning models
-            training_models.train_models(symbol, intervals, strategies)
-            time.sleep(2)
+            # print("---TRAINING MACHINE LEARNING MODELS---")
+            # # Training for machine learning models
+            # training_models.train_models(symbol, intervals, strategies)
+            # time.sleep(2)
             
         except Exception as e:
             print(f"Error processing data for {symbol}: {e}")
