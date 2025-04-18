@@ -67,14 +67,14 @@ def fetch_orderly_symbols():
         response = requests.get(url)
         data = response.json()
         if data.get("success") and "data" in data:
-            two_month_ago = datetime.now(timezone.utc) - timedelta(days=60)
+            three_months_ago = datetime.now(timezone.utc) - timedelta(days=90)
 
             symbols = []
             for row in data["data"]["rows"]:
                 created_time = row.get("created_time")
                 if created_time:
                     created_datetime = datetime.fromtimestamp(created_time / 1000, tz=timezone.utc)
-                    if created_datetime <= two_month_ago and "symbol" in row:
+                    if created_datetime <= three_months_ago and "symbol" in row:
                         symbols.append(row["symbol"])
             return symbols
         else:
