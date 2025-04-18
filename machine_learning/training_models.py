@@ -17,6 +17,7 @@ from datetime import datetime  # Import timedelta from datetime
 # Add the directory containing your modules to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from historical_data import get_historical_data
+from database import operations
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -74,6 +75,36 @@ strategy_features = {
         "Router": {"features": base_features + ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
     }
 }
+
+
+# Function to save training metrics to SQL
+def save_metrics_to_sql(asset, interval, strategy, metrics):
+    """
+    Save training metrics to a SQL database.
+
+    Parameters:
+        asset (str): The asset being trained (e.g., "BTCUSDT").
+        interval (str): The timeframe interval (e.g., "1h", "4h").
+        strategy (str): The strategy used (e.g., "Trend-Following").
+        metrics (dict): A dictionary containing the training metrics.
+        db_url (str): The database URL (default is SQLite).
+    """
+    # Create a DataFrame for the metrics
+    data = {
+        "asset": [asset],
+        "interval": [interval],
+        "strategy": [strategy],
+        "accuracy": [metrics.get("accuracy")],
+        "precision": [metrics.get("precision")],
+        "recall": [metrics.get("recall")],
+        "f1_score": [metrics.get("f1_score")],
+        "roc_auc": [metrics.get("roc_auc")],
+        "timestamp": [pd.Timestamp.now()]
+    }
+    df = pd.DataFrame(data)
+
+    df.to_sql("training_metrics", operations.db_con_historical, if_exists='replace', index=False)
+    print(f"✅ Metrics saved to database for asset={asset}, interval={interval}, strategy={strategy}")
 
 
 # Add technical indicators to the data
@@ -372,7 +403,7 @@ def tune_mi_threshold(X, y, thresholds=[0.005, 0.01, 0.02, 0.05, 0.08]):
 
 
 # Train the model with optimized hyperparameters and automatic MI threshold tuning
-def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features=False):
+def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features=False, asset="BTCUSDT"):
     """
     Train a Random Forest model with features selected based on the interval and strategy.
     Ensure that 'close' is always included in the final feature set.
@@ -514,11 +545,22 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
     if len(y_pred_proba.shape) == 1:
         y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
 
-    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+    metrics = {
+            "accuracy": accuracy_score(y_resampled, y_pred),
+            "precision": precision_score(y_resampled, y_pred, average='macro'),
+            "recall": recall_score(y_resampled, y_pred, average='macro'),
+            "f1_score": f1_score(y_resampled, y_pred, average='macro'),
+            "roc_auc": roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr')
+        }
+    
+    # Save metrics to SQL
+    save_metrics_to_sql(asset, interval, strategy, metrics)
+
+    # print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    # print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
 
     # Save Model & Features
     model_metadata = {
@@ -532,7 +574,7 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
 
 
 # Update the existing model with new data
-def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
+def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY, asset="BTCUSDT", interval="1h", strategy="Trend-Following"):
     """
     Update an existing Random Forest model with new data using incremental learning (warm start).
     Retains the same feature set and preprocessing steps as the original model.
@@ -617,11 +659,22 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
     if len(y_pred_proba.shape) == 1:
         y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
 
-    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
-    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+    metrics = {
+        "accuracy": accuracy_score(y_resampled, y_pred),
+        "precision": precision_score(y_resampled, y_pred, average='macro'),
+        "recall": recall_score(y_resampled, y_pred, average='macro'),
+        "f1_score": f1_score(y_resampled, y_pred, average='macro'),
+        "roc_auc": roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr')
+    }
+    
+    # Save metrics to SQL
+    save_metrics_to_sql(asset, interval, strategy, metrics)
+
+    # print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    # print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    # print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
 
     # --- 🔟 Save Updated Model ---
     model_metadata = {
@@ -667,11 +720,11 @@ def train_machine_learning(pair, interval, strategy):
     if download_model(BUCKET_NAME, MODEL_KEY, local_model_path):
         # Load existing model
         # print("Loaded existing model.")
-        update_model(local_model_path, data, BUCKET_NAME, MODEL_KEY)
+        update_model(local_model_path, data, BUCKET_NAME, MODEL_KEY, asset=pair, interval=interval, strategy=strategy)
     else:
         # Train a new model if none exists
         # print("No existing model found. Training a new model.")
-        train_model(data, local_model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features)
+        train_model(data, local_model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, force_features, asset=pair)
 
     # Delete local model file after upload
     if os.path.exists(local_model_path):
