@@ -44,7 +44,7 @@ strategy_features = {
         "Momentum + Volatility": {"features": base_features + ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
         "Hybrid": {"features": base_features + ["ema_12", "ema_26", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
         "Advanced": {"features": base_features + ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
-        "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        "Router": {"features": base_features + ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
     },
     "1h": {
         "Trend-Following": {"features": base_features + ["ema_20", "ema_50", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
@@ -53,7 +53,7 @@ strategy_features = {
         "Momentum + Volatility": {"features": base_features + ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
         "Hybrid": {"features": base_features + ["ema_20", "ema_50", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
         "Advanced": {"features": base_features + ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
-        "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        "Router": {"features": base_features + ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
     },
     "4h": {
         "Trend-Following": {"features": base_features + ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
@@ -62,7 +62,7 @@ strategy_features = {
         "Momentum + Volatility": {"features": base_features + ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
         "Hybrid": {"features": base_features + ["ema_50", "ema_200", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
         "Advanced": {"features": base_features + ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
-        "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        "Router": {"features": base_features + ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
     },
     "1d": {
         "Trend-Following": {"features": base_features + ["ema_50", "ema_200", "macd", "macd_signal", "adx", "vwap"], "force_features": True},
@@ -71,7 +71,7 @@ strategy_features = {
         "Momentum + Volatility": {"features": base_features + ["rsi_14", "atr_14", "bollinger_hband", "bollinger_lband", "roc_10", "momentum_10", "vwap"], "force_features": True},
         "Hybrid": {"features": base_features + ["ema_50", "ema_200", "atr_14", "bollinger_hband", "rsi_14", "macd", "vwap"], "force_features": True},
         "Advanced": {"features": base_features + ["tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": True},
-        "Router": {"features": ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
+        "Router": {"features": base_features + ["ema_12", "ema_26", "macd", "macd_signal", "adx", "atr_14", "bollinger_hband", "bollinger_lband", "std_20", "rsi_14", "stoch_k_14", "stoch_d_14", "roc_10", "momentum_10", "tenkan_sen_9", "kijun_sen_26", "senkou_span_a", "senkou_span_b", "sar", "vwap"], "force_features": False}
     }
 }
 
@@ -514,11 +514,11 @@ def train_model(data, model_path, interval, strategy, BUCKET_NAME, MODEL_KEY, fo
     if len(y_pred_proba.shape) == 1:
         y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
 
-    # print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    # print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
-    # print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
-    # print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
-    # print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
 
     # Save Model & Features
     model_metadata = {
@@ -617,11 +617,11 @@ def update_model(model_path, new_data, BUCKET_NAME, MODEL_KEY):
     if len(y_pred_proba.shape) == 1:
         y_pred_proba = y_pred_proba.reshape(-1, 1)  # Reshape to (n_samples, 1)
 
-    # print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
-    # print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
-    # print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
-    # print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
-    # print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
+    print(f"✅ Accuracy: {accuracy_score(y_resampled, y_pred):.4f}")
+    print(f"✅ Precision: {precision_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ Recall: {recall_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ F1-Score: {f1_score(y_resampled, y_pred, average='macro'):.4f}")
+    print(f"✅ ROC-AUC: {roc_auc_score(y_resampled, y_pred_proba, multi_class='ovr'):.4f}")
 
     # --- 🔟 Save Updated Model ---
     model_metadata = {
@@ -700,6 +700,14 @@ def get_features_for_strategy(interval, strategy):
         "features": strategy_info.get("features", []),
         "force_features": strategy_info.get("force_features", False)
     }
+
+
+# Main function to train or update models for multiple intervals
+def train_models(symbol, intervals, strategies):
+    for interval in intervals:
+        for strategy in strategies:
+            train_machine_learning(symbol, interval, strategy)
+        
 
 # Train models with different features
 # if __name__ == "__main__":
