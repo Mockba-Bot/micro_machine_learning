@@ -2,9 +2,6 @@ import os
 import sys
 import joblib
 import numpy as np
-import pandas as pd
-import multiprocessing
-import requests
 import xgboost as xgb
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import RandomizedSearchCV
@@ -112,7 +109,11 @@ def train_or_update_xgboost_model(symbol, interval, look_back=60):
 # Main function to train or update models for multiple intervals
 def train_models(symbol, intervals):
     for interval in intervals:
-        train_or_update_xgboost_model(symbol, interval)
+        try:
+            train_or_update_xgboost_model(symbol, interval)
+        except Exception as e:
+            print(f"Skipping {symbol}/{interval} due to error: {str(e)}")
+            continue
 
 # Run training for selected intervals
 # if __name__ == "__main__":
