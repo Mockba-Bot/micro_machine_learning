@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import requests
 import time  # Import time module
 import schedule
+from datetime import datetime, timedelta, timezone
 
 # Add the directory containing your modules to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'machine_learning')))
@@ -23,7 +24,15 @@ def fetch_orderly_symbols():
         response = requests.get(url)
         data = response.json()
         if data.get("success") and "data" in data:
-            symbols = [row["symbol"] for row in data["data"]["rows"] if "symbol" in row]
+            three_months_ago = datetime.now(timezone.utc) - timedelta(days=90)
+
+            symbols = []
+            for row in data["data"]["rows"]:
+                created_time = row.get("created_time")
+                if created_time:
+                    created_datetime = datetime.fromtimestamp(created_time / 1000, tz=timezone.utc)
+                    if created_datetime <= three_months_ago and "symbol" in row:
+                        symbols.append(row["symbol"])
             return symbols
         else:
             print("⚠️ Unexpected API response format or missing 'data' key.")
