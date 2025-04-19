@@ -53,14 +53,14 @@ def run_machine_learning_and_historical_data():
         strategies = ["Trend-Following", "Volatility Breakout", "Momentum Reversal", "Momentum + Volatility", "Hybrid", "Advanced", "Router"]
         try:
             # Training for Elliot Waves
-            print("---TRAINING ELLIOT WAVES---")
-            elliot_waves_analysis.train_models(symbol, intervals_for_elliot_waves)
-            time.sleep(2)
-
-            # print("---TRAINING SIGNAL MODELS---")
-            # # Training for signal models
-            # signal_models.train_models(symbol, intervals)
+            # print("---TRAINING ELLIOT WAVES---")
+            # elliot_waves_analysis.train_models(symbol, intervals_for_elliot_waves)
             # time.sleep(2)
+
+            print("---TRAINING SIGNAL MODELS---")
+            # Training for signal models
+            signal_models.train_models(symbol, intervals)
+            time.sleep(2)
 
             # print("---TRAINING TECHNICAL ANALYSIS---")
             # # # Training for technical analysis
